@@ -1,0 +1,72 @@
+[versions]
+agp = "8.13.2"
+kotlin = "2.1.0"
+ksp = "2.1.0-1.0.29"
+compose-bom = "2024.12.01"
+hilt = "2.53.1"
+hilt-navigation = "1.2.0"
+lifecycle = "2.8.7"
+nav-compose = "2.8.5"
+room = "2.6.1"
+datastore = "1.1.1"
+coroutines = "1.9.0"
+protobuf = "0.9.4"
+protobuf-runtime = "3.25.5"
+accompanist = "0.36.0"
+documentfile = "1.0.1"
+
+[libraries]
+# AndroidX 基础
+androidx-core-ktx = { module = "androidx.core:core-ktx", version = "1.15.0" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.9.3" }
+androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+androidx-lifecycle-service = { module = "androidx.lifecycle:lifecycle-service", version.ref = "lifecycle" }
+androidx-documentfile = { module = "androidx.documentfile:documentfile", version.ref = "documentfile" }
+
+# Compose
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
+compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-material-icons = { module = "androidx.compose.material:material-icons-extended" }
+compose-navigation = { module = "androidx.navigation:navigation-compose", version.ref = "nav-compose" }
+
+# Hilt
+hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
+hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hilt" }
+hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hilt-navigation" }
+
+# Room
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+
+# DataStore + Proto
+datastore = { module = "androidx.datastore:datastore", version.ref = "datastore" }
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf-runtime" }
+protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobuf-runtime" }
+protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf-runtime" }
+
+# 协程
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+
+# libxposed API 101（compileOnly）
+libxposed-api = { module = "io.github.libxposed:api", version = "101.0.1" }
+# legacy Xposed API 82（compileOnly，用于旧版 LSPosed 兼容入口）
+legacy-xposed-api = { module = "de.robv.android.xposed:api", version = "82" }
+
+# 字节跳动 shadowhook：native inline hook 框架，用于劫持 AAudio
+shadowhook = { module = "com.bytedance.android:shadowhook", version = "1.0.10" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobuf" }

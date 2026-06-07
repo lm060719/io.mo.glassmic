@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        旧版 LSPosed manifest scope 兼容资源。
+
+        libxposed API 101 的正式作用域配置已经迁移到：
+        xposed/src/main/resources/META-INF/xposed/scope.list
+
+        保留该数组只用于旧文档/旧管理器读取时的兼容，不再作为主入口配置。
+    -->
+    <string-array name="xposed_default_scope">
+        <item>android</item>
+    </string-array>
+</resources>

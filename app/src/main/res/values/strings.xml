@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App 基础 -->
+    <string name="app_name">璃麦 GlassMic</string>
+    <string name="xposed_description">GlassMic / 璃麦 - 虚拟麦克风测试模块</string>
+
+    <!-- 常驻通知（不可隐藏） -->
+    <string name="notif_channel_name">虚拟麦克风状态</string>
+    <string name="notif_channel_desc">显示虚拟麦克风运行状态的常驻通知，开启时无法隐藏。</string>
+    <string name="notif_title">GlassMic / 璃麦</string>
+    <string name="notif_text">虚拟麦克风使用中</string>
+
+    <!-- 首次启动 -->
+    <string name="onboarding_disclaimer_title">免责声明</string>
+    <string name="onboarding_disclaimer_body">
+        GlassMic / 璃麦 是一个面向 Root 与 LSPosed 用户的开源虚拟麦克风与音频链路测试工具。\n\n
+        本工具仅用于用户本人设备上的音频链路测试、开发调试、兼容性验证和合法辅助场景。开启后，模块会显示常驻通知，并在设备重启后默认关闭虚拟麦克风功能。\n\n
+        请勿将本工具用于冒充他人、欺骗通话、干扰他人、规避平台规则、侵犯隐私或其他违法违规场景。因不当使用导致的后果由使用者自行承担。\n\n
+        实验功能仅用于本机音频测试，请勿用于制造刺耳声音、骚扰他人或破坏他人正常使用体验。
+    </string>
+    <string name="onboarding_disclaimer_agree">我已阅读并理解以上内容，并承诺仅在合法、透明、可控的场景中使用本工具。</string>
+    <string name="onboarding_continue">继续</string>
+    <string name="onboarding_retry">重新检测</string>
+    <string name="onboarding_grant">去授权</string>
+
+    <string name="perm_root_title">Root 授权</string>
+    <string name="perm_root_hint">请在 Magisk / KernelSU 管理器中授予 GlassMic Root 权限。</string>
+    <string name="perm_notif_title">通知权限</string>
+    <string name="perm_notif_hint">虚拟麦克风开启时必须显示常驻通知。如关闭通知则无法使用核心功能。</string>
+    <string name="perm_overlay_title">悬浮窗权限</string>
+    <string name="perm_overlay_hint">用于显示控制悬浮窗。未授权时将回退到通知 + 主界面控制。</string>
+    <string name="perm_file_title">音频文件访问</string>
+    <string name="perm_file_hint">用于导入并读取你选择的本地音频文件。</string>
+    <string name="perm_fgs_title">前台服务能力</string>
+    <string name="perm_fgs_hint">用于维持运行态与常驻通知。</string>
+    <string name="perm_safemode_title">安全模式状态</string>
+    <string name="perm_safemode_hint">检测上次是否异常退出。</string>
+
+    <!-- 状态 -->
+    <string name="status_running">GlassMic 正在运行</string>
+    <string name="status_off">GlassMic 已关闭</string>
+    <string name="status_using_real">当前使用真实麦克风</string>
+    <string name="status_using_virtual">虚拟麦克风使用中</string>
+
+    <!-- 主页 -->
+    <string name="home_pick_audio">选择音频</string>
+    <string name="home_open_floating">打开悬浮窗</string>
+    <string name="home_restore_mic">恢复真实麦克风</string>
+    <string name="home_field_source">音源</string>
+    <string name="home_field_group">片段组</string>
+    <string name="home_field_policy">策略</string>
+    <string name="home_field_scope">范围</string>
+    <string name="home_field_floating">悬浮窗</string>
+    <string name="home_field_hook">Xposed 注入</string>
+    <string name="home_field_intercept">劫持统计</string>
+    <string name="hook_status_never">未检测到（请确认模块已启用并重启设备）</string>
+    <string name="hook_status_active">活跃</string>
+    <string name="hook_status_stale">已加载（无近期录音事件）</string>
+    <string name="intercept_none">还没拦截到任何 AudioRecord 调用</string>
+    <string name="intercept_summary">已劫持 %1$d 次 / %2$s</string>
+
+    <!-- 安全模式 -->
+    <string name="safe_mode_title">GlassMic 已进入安全模式</string>
+    <string name="safe_mode_subtitle">虚拟麦克风功能已停止</string>
+    <string name="safe_mode_exit">退出安全模式</string>
+    <string name="safe_mode_export_diag">导出诊断包</string>
+    <string name="safe_mode_exit_confirm">退出安全模式后，你可以重新开启 GlassMic。若问题重复出现，请导出诊断包并反馈。</string>
+
+    <!-- 作用域 -->
+    <string name="scope_title">生效范围</string>
+    <string name="scope_mode_global">全系统</string>
+    <string name="scope_mode_global_hint">对作用域内所有 App 生效（不做包名过滤）</string>
+    <string name="scope_mode_whitelist">白名单</string>
+    <string name="scope_mode_whitelist_hint">仅清单内勾选的 App 生效</string>
+    <string name="scope_native_warn">注：模块只能注入到 LSPosed 作用域内的 App 进程；audioserver 等 native daemon 与走 NDK AAudio 的 App 不在覆盖范围内。</string>
+    <string name="scope_lsposed_alert_title">⚠️ 这里设置的是 App 内过滤，不是 LSPosed 注入开关</string>
+    <string name="scope_lsposed_alert_body">无论这里选「全系统」还是「白名单」，模块**先要被 LSPosed 注入到目标 App 进程**才能生效。\n\n如果你发现微信 / 抖音等 App 没效果：\n1. 打开「LSPosed 管理器」\n2. 模块 → GlassMic / 璃麦 → 作用域\n3. 勾选你要劫持的 App\n4. 强制停止那个 App 再重新打开</string>
+    <string name="scope_open_lsposed">打开 LSPosed 管理器</string>
+    <string name="scope_open_lsposed_failed">未找到 LSPosed 管理器</string>
+    <string name="scope_show_system_apps">显示系统应用</string>
+    <string name="scope_search_hint">搜索 App 名称或包名</string>
+    <string name="scope_loading">加载已安装 App…</string>
+    <string name="scope_empty">没有匹配的应用</string>
+    <string name="scope_selected_count">已选 %d 个</string>
+
+    <!-- 音频库 -->
+    <string name="library_title">音频库</string>
+    <string name="library_import">导入音频</string>
+    <string name="library_new_group">新建片段组</string>
+    <string name="library_empty_groups">还没有片段组，先新建一个</string>
+    <string name="library_empty_clips">该组还没有音频，点击下方按钮导入</string>
+    <string name="library_select_a_group">先选择或新建一个片段组</string>
+    <string name="library_set_current">设为当前音源</string>
+    <string name="library_preview">试听</string>
+    <string name="library_preview_stop">停止试听</string>
+    <string name="library_delete">删除</string>
+    <string name="library_rename">重命名</string>
+    <string name="library_change_emoji">更换图标</string>
+    <string name="library_change_policy">修改播放策略</string>
+    <string name="library_policy_follow_global">跟随全局</string>
+    <string name="library_policy_silence">播完静音</string>
+    <string name="library_policy_loop">循环</string>
+    <string name="library_policy_real_mic">切回真实麦克风</string>
+    <string name="library_group_name_hint">片段组名称</string>
+    <string name="library_clip_name_hint">音频名称</string>
+    <string name="library_delete_group_confirm">删除该组将同时删除组内所有音频。是否继续？</string>
+    <string name="library_delete_clip_confirm">确认删除该音频？</string>
+    <string name="library_cancel">取消</string>
+    <string name="library_confirm">确认</string>
+    <string name="library_current_marker">当前音源</string>
+    <string name="library_import_failed">导入失败</string>
+
+    <!-- 设置页 -->
+    <string name="settings_title">设置</string>
+    <string name="settings_section_appearance">外观</string>
+    <string name="settings_theme">主题</string>
+    <string name="settings_theme_follow">跟随系统</string>
+    <string name="settings_theme_light">浅色</string>
+    <string name="settings_theme_dark">深色</string>
+    <string name="settings_glass_effect">液态玻璃</string>
+    <string name="settings_glass_effect_hint">关闭可降低功耗</string>
+    <string name="settings_reduce_motion">减少动画</string>
+
+    <string name="settings_section_floating">悬浮窗</string>
+    <string name="settings_floating_enabled">允许悬浮窗</string>
+    <string name="settings_floating_enabled_hint">主开关开启后才会显示</string>
+    <string name="settings_floating_opacity">不透明度</string>
+
+    <string name="settings_section_policy">默认播放策略</string>
+    <string name="settings_policy_hint">片段组未单独设置时使用</string>
+
+    <string name="settings_section_hook">Xposed 注入状态</string>
+    <string name="settings_hook_refresh">刷新</string>
+    <string name="settings_hook_never_long">还没有任何 App 触发过 GlassMic 的录音钩子。请确认：\n1) 在 LSPosed 中已启用本模块\n2) 重启过设备\n3) 测试 App 在 LSPosed 作用域内</string>
+    <string name="settings_hook_active_long">最近 5 分钟内有 App 触发过录音钩子，注入正常。</string>
+    <string name="settings_hook_stale_long">曾经收到过录音钩子调用，但最近 5 分钟无新事件。模块可能仍然加载，只是没 App 在录音。</string>
+
+    <string name="settings_section_diag">诊断与日志</string>
+    <string name="settings_log_level">日志级别</string>
+    <string name="settings_log_off">关闭</string>
+    <string name="settings_log_basic">基础</string>
+    <string name="settings_log_verbose">详细</string>
+    <string name="settings_log_debug">调试</string>
+    <string name="settings_export_diag">导出诊断包</string>
+    <string name="settings_clear_log">清空内存日志</string>
+    <string name="settings_pipeline_probe">测试音频管线（本地）</string>
+    <string name="settings_pipeline_probe_hint">本地打开 PCM 通道读 1 秒，判断 App 侧管线是否通；不依赖 Xposed</string>
+    <string name="settings_section_intercept">劫持统计</string>
+    <string name="settings_intercept_reset">清零</string>
+    <string name="settings_intercept_total_reads">已劫持次数</string>
+    <string name="settings_intercept_total_bytes">已劫持字节</string>
+    <string name="settings_intercept_last">最近劫持时间</string>
+    <string name="settings_intercept_last_pkg">最近调用方</string>
+    <string name="settings_intercept_format">采样率 / 声道</string>
+
+    <string name="settings_section_experimental">实验功能</string>
+    <string name="settings_experimental_unlock">解锁实验功能</string>
+    <string name="settings_experimental_unlock_hint">仅用于本机音频链路测试</string>
+    <string name="settings_exp_stress">音频压力测试</string>
+    <string name="settings_exp_high_gain">高增益</string>
+    <string name="settings_exp_noise">噪声环境模拟</string>
+    <string name="settings_exp_limiter">自动限幅保护</string>
+    <string name="settings_exp_limiter_hint">关闭可能导致削波，强烈建议保留</string>
+
+    <string name="settings_section_about">关于</string>
+    <string name="settings_about_version">版本</string>
+    <string name="settings_about_license">开源协议</string>
+    <string name="settings_about_repo">项目仓库</string>
+
+</resources>

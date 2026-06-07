@@ -1,0 +1,33 @@
+# Gradle
+.gradle/
+build/
+**/build/
+local.properties
+
+# IDE
+.idea/
+*.iml
+.kotlin/
+.cxx/
+captures/
+app/debug/
+diag-*/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output
+*.apk
+*.aab
+*.aar
+*.dex
+release/
+
+# Signing
+keystore.properties
+*.jks
+*.keystore
+
+# Logs
+*.log

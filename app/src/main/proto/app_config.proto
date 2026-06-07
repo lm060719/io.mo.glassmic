@@ -1,0 +1,96 @@
+syntax = "proto3";
+
+package io.mo.glassmic.proto;
+
+option java_package = "io.mo.glassmic.proto";
+option java_multiple_files = true;
+
+message AppConfig {
+  int32 version = 1;
+
+  // 持久化字段——但启动时强制 BootGate 校验，重启后默认无效
+  bool global_switch = 2;
+
+  ScopeMode scope_mode = 3;
+  PlaybackPolicy playback_policy = 4;
+  FloatingWindow floating_window = 5;
+  Appearance appearance = 6;
+
+  repeated string whitelist = 7;
+  repeated string blacklist = 8;
+
+  Logging logging = 9;
+  Experimental experimental = 10;
+
+  bool onboarding_completed = 11;
+  bool debug_panel_unlocked = 12;
+
+  // 当前选中的音源（仅记录元数据 id；播放进度走运行态）
+  string current_group_id = 13;
+  string current_audio_id = 14;
+
+  // App 选择页是否显示系统应用
+  bool show_system_apps = 15;
+}
+
+enum ScopeMode {
+  GLOBAL = 0;
+  WHITELIST = 1;
+  BLACKLIST = 2;
+}
+
+enum PlaybackPolicy {
+  SILENCE = 0;
+  LOOP = 1;
+  REAL_MIC = 2;
+}
+
+message FloatingWindow {
+  bool enabled = 1;
+  FloatingMode default_mode = 2;
+  float opacity = 3;
+  FloatingSize size = 4;
+}
+
+enum FloatingMode {
+  PILL = 0;
+  PANEL = 1;
+}
+
+enum FloatingSize {
+  SMALL = 0;
+  STANDARD = 1;
+  LARGE = 2;
+}
+
+message Appearance {
+  ThemeMode theme = 1;
+  bool glass_effect = 2;
+  bool reduce_motion = 3;
+}
+
+enum ThemeMode {
+  FOLLOW_SYSTEM = 0;
+  LIGHT = 1;
+  DARK = 2;
+}
+
+message Logging {
+  bool enabled = 1;
+  LogLevel level = 2;
+}
+
+enum LogLevel {
+  OFF = 0;
+  BASIC = 1;
+  VERBOSE = 2;
+  DEBUG = 3;
+}
+
+message Experimental {
+  bool unlocked = 1;
+  bool stress_test = 2;
+  bool high_gain = 3;
+  bool noise_sim = 4;
+  bool limiter_enabled = 5;  // 默认 true，保护开关
+}

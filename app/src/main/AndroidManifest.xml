@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 录音 + 麦克风（FGS 类型需要） -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
+    <!-- 通知 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- 悬浮窗 -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- 文件访问（Android 13+ 分桶） -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
+    <!-- 启动时唤醒 + Boot 完成（只用于清理状态，不自动启服务） -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- 查询已安装应用（App 选择页） -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".GlassApplication"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:description="@string/xposed_description"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.GlassMic"
+        tools:targetApi="35">
+
+        <!-- legacy Xposed API 82 识别信息；API 101 会忽略这些 metadata -->
+        <meta-data
+            android:name="xposedmodule"
+            android:value="true" />
+        <meta-data
+            android:name="xposeddescription"
+            android:value="@string/xposed_description" />
+        <meta-data
+            android:name="xposedminversion"
+            android:value="82" />
+
+        <!-- ============ 主 Activity ============ -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="uiMode|screenSize|orientation|smallestScreenSize|density|keyboard|keyboardHidden|navigation"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- ============ 前台服务（含常驻通知） ============ -->
+        <service
+            android:name=".service.GlassForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
+        <!-- ============ 悬浮窗服务 ============ -->
+        <service
+            android:name=".service.FloatingWindowService"
+            android:exported="false" />
+
+        <!-- ============ 启动广播（仅用于清理 enabled_for_boot） ============ -->
+        <receiver
+            android:name=".service.BootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ============ 运行态 / PCM Provider ============ -->
+        <provider
+            android:name=".provider.RuntimeProvider"
+            android:authorities="io.mo.glassmic.provider.runtime"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+
+        <provider
+            android:name=".provider.PcmStreamProvider"
+            android:authorities="io.mo.glassmic.provider.pcm"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+
+        <!-- ============ 诊断包分享 FileProvider ============ -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="io.mo.glassmic.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+
+</manifest>
