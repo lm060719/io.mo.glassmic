@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
@@ -42,11 +43,15 @@ class GlassForegroundService : LifecycleService() {
         ensureChannel()
         // 创建运行哨兵——onDestroy 时删除
         runCatching { File(filesDir, Constants.RUNNING_SENTINEL).createNewFile() }
-        startForeground(
-            Constants.NOTIF_ID,
-            buildNotification(),
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-        )
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(
+                Constants.NOTIF_ID,
+                buildNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            )
+        } else {
+            startForeground(Constants.NOTIF_ID, buildNotification())
+        }
         runtime.setEnabled(true)
         lifecycleScope.launch {
             if (playback.restorePersistedClip()) {

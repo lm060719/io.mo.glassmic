@@ -2,6 +2,7 @@ package io.mo.glassmic.xposed
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import com.bytedance.shadowhook.ShadowHook
 import io.mo.glassmic.core.Constants
 import io.mo.glassmic.core.model.SourceType
@@ -153,7 +154,15 @@ object NativeAAudioHook {
         }
 
         // detachFd 后 PFD 不再持有 fd 所有权，由 native 负责 close
-        val fd = runCatching { pfd.detachFd() }.getOrDefault(-1)
+        val fd = if (Build.VERSION.SDK_INT >= 33) {
+            runCatching { pfd.detachFd() }.getOrDefault(-1)
+        } else {
+            // API < 33: detachFd() 不存在，用 native dup() 复制 fd
+            runCatching {
+                val rawFd = pfd.fileDescriptor
+                nativeDupFd(rawFd)
+            }.getOrDefault(-1)
+        }
         runCatching { pfd.close() }
         if (fd < 0) {
             nativeSetPcmFd(-1, 0, 0)
@@ -172,4 +181,5 @@ object NativeAAudioHook {
     @JvmStatic private external fun nativeSetDecision(decision: Int)
     @JvmStatic private external fun nativeSetPcmFd(fd: Int, sampleRate: Int, channels: Int)
     @JvmStatic private external fun nativeDrainStats(): LongArray?
+    @JvmStatic private external fun nativeDupFd(fd: java.io.FileDescriptor): Int
 }

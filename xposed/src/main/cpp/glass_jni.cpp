@@ -1,6 +1,8 @@
 #include "glass_aaudio.h"
 #include "glass_log.h"
 
+#include <cerrno>
+#include <cstring>
 #include <jni.h>
 #include <unistd.h>
 
@@ -35,6 +37,22 @@ Java_io_mo_glassmic_xposed_NativeAAudioHook_nativeSetPcmFd(
     JNIEnv* env, jclass, jint fd, jint sample_rate, jint channels
 ) {
     set_pcm_fd(fd, sample_rate, channels);
+}
+
+/**
+ * dup() a FileDescriptor and return the new fd number.
+ * Used on API < 33 where ParcelFileDescriptor.detachFd() is unavailable.
+ */
+JNIEXPORT jint JNICALL
+Java_io_mo_glassmic_xposed_NativeAAudioHook_nativeDupFd(JNIEnv* env, jclass, jobject fdObj) {
+    jclass fdClass = env->FindClass("java/io/FileDescriptor");
+    jfieldID fidField = env->GetFieldID(fdClass, "descriptor", "I");
+    jint rawFd = env->GetIntField(fdObj, fidField);
+    jint newFd = ::dup(rawFd);
+    if (newFd < 0) {
+        LOGE("dup(%d) failed: %s", rawFd, strerror(errno));
+    }
+    return newFd;
 }
 
 /**
