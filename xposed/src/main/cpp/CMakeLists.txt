@@ -10,6 +10,8 @@ find_package(shadowhook REQUIRED CONFIG)
 add_library(glassmic_native SHARED
     glass_jni.cpp
     glass_aaudio.cpp
+    glass_opensl.cpp
+    glass_audiorecord.cpp
 )
 
 target_include_directories(glassmic_native PRIVATE
@@ -20,6 +22,7 @@ target_link_libraries(glassmic_native
     PRIVATE
         shadowhook::shadowhook
         aaudio     # Android NDK 自带，运行时连到 /system/lib*/libaaudio.so
+        OpenSLES   # 仅为头文件/类型；hook 通过 shadowhook 按符号名安装
         log        # __android_log_print
 )
 

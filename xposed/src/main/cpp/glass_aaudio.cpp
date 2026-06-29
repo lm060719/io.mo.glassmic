@@ -31,7 +31,13 @@ static std::atomic<int32_t> g_last_ch{0};
 
 using AAudioStream_read_fn = aaudio_result_t(*)(AAudioStream*, void*, int32_t, int64_t);
 static AAudioStream_read_fn g_orig_AAudioStream_read = nullptr;
-static void* g_hook_stub = nullptr;
+static void* g_read_hook_stub = nullptr;
+
+// ---- callback 模式 hook 用 ----
+using AAudioStreamBuilder_setDataCallback_fn =
+    void(*)(AAudioStreamBuilder*, AAudioStream_dataCallback, void*);
+static AAudioStreamBuilder_setDataCallback_fn g_orig_setDataCallback = nullptr;
+static void* g_setcb_hook_stub = nullptr;
 
 static int32_t bytes_per_dst_sample(aaudio_format_t fmt) {
     switch (fmt) {
@@ -143,6 +149,110 @@ static int read_full(int fd, uint8_t* buf, int n) {
     return got;
 }
 
+/**
+ * 把虚拟音源填进一个已知格式的输入缓冲。
+ *
+ * 返回值：
+ *   FillResult::FILLED   —— buffer 已被虚拟数据覆盖
+ *   FillResult::PASS     —— 当前应放行真实麦克风（REAL_MIC，或 FILE 但暂无可读数据）
+ *
+ * 同时累计劫持统计。read() 路径与 data-callback 路径共用本函数。
+ */
+enum class FillResult { FILLED, PASS };
+
+/**
+ * 不依赖 AAudioStream 的底层填充：把虚拟音源按给定 PCM 格式写进 buffer。
+ * AAudio（read / data-callback）与 OpenSL ES 两条路径共用本函数。
+ */
+static FillResult fill_pcm_impl(
+    void* buffer,
+    aaudio_format_t dst_fmt,
+    int32_t dst_channels,
+    int32_t dst_sample_rate,
+    int32_t numFrames
+) {
+    if (!buffer || numFrames <= 0 || dst_channels <= 0) return FillResult::PASS;
+
+    Decision decision = static_cast<Decision>(g_decision.load(std::memory_order_relaxed));
+    if (decision == Decision::REAL_MIC) return FillResult::PASS;
+
+    if (dst_sample_rate <= 0) dst_sample_rate = 48'000;
+
+    if (decision == Decision::SILENCE) {
+        std::memset(
+            buffer,
+            0,
+            static_cast<size_t>(numFrames) * dst_channels * bytes_per_dst_sample(dst_fmt)
+        );
+        g_pending_reads.fetch_add(1, std::memory_order_relaxed);
+        g_pending_bytes.fetch_add(static_cast<uint64_t>(numFrames) * dst_channels * 2, std::memory_order_relaxed);
+        g_last_sr.store(dst_sample_rate, std::memory_order_relaxed);
+        g_last_ch.store(dst_channels, std::memory_order_relaxed);
+        return FillResult::FILLED;
+    }
+
+    // decision == FILE
+    int fd = -1;
+    int32_t src_channels = 1;
+    int32_t src_sample_rate = 48'000;
+    {
+        std::lock_guard<std::mutex> lock(g_fd_mutex);
+        fd = g_fd_state.fd;
+        src_channels = g_fd_state.channels > 0 ? g_fd_state.channels : 1;
+        src_sample_rate = g_fd_state.sample_rate > 0 ? g_fd_state.sample_rate : 48'000;
+    }
+    if (fd < 0) return FillResult::PASS;
+
+    int32_t need_src_frames = static_cast<int32_t>(
+        (static_cast<int64_t>(numFrames) * src_sample_rate + dst_sample_rate - 1) / dst_sample_rate
+    );
+    if (need_src_frames <= 0) need_src_frames = numFrames;
+
+    int need_bytes = need_src_frames * src_channels * 2;
+    if (need_bytes > 32 * 1024) return FillResult::PASS;
+
+    uint8_t tmp[32 * 1024];
+    int got = read_full(fd, tmp, need_bytes);
+    if (got <= 0) return FillResult::PASS;
+
+    int got_frames = got / (src_channels * 2);
+    convert_and_write(
+        buffer,
+        dst_fmt,
+        dst_channels,
+        reinterpret_cast<int16_t*>(tmp),
+        got_frames,
+        src_channels,
+        numFrames
+    );
+
+    g_pending_reads.fetch_add(1, std::memory_order_relaxed);
+    g_pending_bytes.fetch_add(static_cast<uint64_t>(got), std::memory_order_relaxed);
+    g_last_sr.store(dst_sample_rate, std::memory_order_relaxed);
+    g_last_ch.store(dst_channels, std::memory_order_relaxed);
+    return FillResult::FILLED;
+}
+
+static FillResult fill_input_buffer(AAudioStream* stream, void* buffer, int32_t numFrames) {
+    if (!stream) return FillResult::PASS;
+    int32_t ch = AAudioStream_getChannelCount(stream);
+    if (ch <= 0) ch = 1;
+    int32_t sr = AAudioStream_getSampleRate(stream);
+    if (sr <= 0) sr = 48'000;
+    aaudio_format_t fmt = AAudioStream_getFormat(stream);
+    return fill_pcm_impl(buffer, fmt, ch, sr, numFrames);
+}
+
+// 导出给 OpenSL ES 路径用（见 glass_aaudio.h）。
+bool fill_pcm(void* buffer, SampleFmt sf, int32_t channels, int32_t sample_rate, int32_t frames) {
+    aaudio_format_t fmt = (sf == SampleFmt::FLOAT)
+        ? AAUDIO_FORMAT_PCM_FLOAT
+        : AAUDIO_FORMAT_PCM_I16;
+    return fill_pcm_impl(buffer, fmt, channels, sample_rate, frames) == FillResult::FILLED;
+}
+
+// =================== 阻塞 read 路径 ===================
+
 static aaudio_result_t my_AAudioStream_read(
     AAudioStream* stream,
     void* buffer,
@@ -157,77 +267,61 @@ static aaudio_result_t my_AAudioStream_read(
         return g_orig_AAudioStream_read(stream, buffer, numFrames, timeoutNanos);
     }
 
-    Decision decision = static_cast<Decision>(g_decision.load(std::memory_order_relaxed));
-    if (decision == Decision::REAL_MIC) {
-        return g_orig_AAudioStream_read(stream, buffer, numFrames, timeoutNanos);
-    }
-
-    int32_t stream_channels = AAudioStream_getChannelCount(stream);
-    if (stream_channels <= 0) stream_channels = 1;
-    int32_t stream_sample_rate = AAudioStream_getSampleRate(stream);
-    if (stream_sample_rate <= 0) stream_sample_rate = 48'000;
-    aaudio_format_t stream_fmt = AAudioStream_getFormat(stream);
-
-    if (decision == Decision::SILENCE) {
-        std::memset(
-            buffer,
-            0,
-            static_cast<size_t>(numFrames) * stream_channels * bytes_per_dst_sample(stream_fmt)
-        );
-        g_pending_reads.fetch_add(1, std::memory_order_relaxed);
-        g_pending_bytes.fetch_add(static_cast<uint64_t>(numFrames) * stream_channels * 2, std::memory_order_relaxed);
-        g_last_sr.store(stream_sample_rate, std::memory_order_relaxed);
-        g_last_ch.store(stream_channels, std::memory_order_relaxed);
+    if (fill_input_buffer(stream, buffer, numFrames) == FillResult::FILLED) {
         return numFrames;
     }
+    return g_orig_AAudioStream_read(stream, buffer, numFrames, timeoutNanos);
+}
 
-    int fd = -1;
-    int32_t src_channels = 1;
-    int32_t src_sample_rate = 48'000;
-    {
-        std::lock_guard<std::mutex> lock(g_fd_mutex);
-        fd = g_fd_state.fd;
-        src_channels = g_fd_state.channels > 0 ? g_fd_state.channels : 1;
-        src_sample_rate = g_fd_state.sample_rate > 0 ? g_fd_state.sample_rate : 48'000;
+// =================== data-callback 路径 ===================
+//
+// 抖音等使用 AAudio 的回调采集模式（AAudioStreamBuilder_setDataCallback +
+// LOW_LATENCY）。回调模式下数据由框架回调线程直接送进 app 的 callback，
+// 完全不经过 AAudioStream_read。我们 hook setDataCallback，把 app 的 callback
+// 包进 trampoline：在转交给 app 之前，把输入缓冲覆盖成虚拟音源。
+
+struct CbWrapper {
+    AAudioStream_dataCallback orig_cb;
+    void* orig_ud;
+};
+
+static aaudio_data_callback_result_t my_data_callback(
+    AAudioStream* stream,
+    void* userData,
+    void* audioData,
+    int32_t numFrames
+) {
+    auto* w = static_cast<CbWrapper*>(userData);
+
+    // 仅对输入流改写；输出流（播放）原样转交。
+    if (stream && audioData && numFrames > 0 &&
+        AAudioStream_getDirection(stream) == AAUDIO_DIRECTION_INPUT) {
+        fill_input_buffer(stream, audioData, numFrames);
     }
 
-    if (fd < 0) {
-        return g_orig_AAudioStream_read(stream, buffer, numFrames, timeoutNanos);
+    if (w && w->orig_cb) {
+        return w->orig_cb(stream, w->orig_ud, audioData, numFrames);
+    }
+    return AAUDIO_CALLBACK_RESULT_CONTINUE;
+}
+
+static void my_setDataCallback(
+    AAudioStreamBuilder* builder,
+    AAudioStream_dataCallback callback,
+    void* userData
+) {
+    // app 传 nullptr 表示改用阻塞 read 模式——必须原样转交，否则会被我们
+    // 误转成 callback 模式。
+    if (callback == nullptr) {
+        g_orig_setDataCallback(builder, nullptr, userData);
+        return;
     }
 
-    int32_t need_src_frames = static_cast<int32_t>(
-        (static_cast<int64_t>(numFrames) * src_sample_rate + stream_sample_rate - 1) / stream_sample_rate
-    );
-    if (need_src_frames <= 0) need_src_frames = numFrames;
-
-    int need_bytes = need_src_frames * src_channels * 2;
-    if (need_bytes > 32 * 1024) {
-        return g_orig_AAudioStream_read(stream, buffer, numFrames, timeoutNanos);
-    }
-
-    uint8_t tmp[32 * 1024];
-    int got = read_full(fd, tmp, need_bytes);
-    if (got <= 0) {
-        return g_orig_AAudioStream_read(stream, buffer, numFrames, timeoutNanos);
-    }
-
-    int got_frames = got / (src_channels * 2);
-    convert_and_write(
-        buffer,
-        stream_fmt,
-        stream_channels,
-        reinterpret_cast<int16_t*>(tmp),
-        got_frames,
-        src_channels,
-        numFrames
-    );
-
-    g_pending_reads.fetch_add(1, std::memory_order_relaxed);
-    g_pending_bytes.fetch_add(static_cast<uint64_t>(got), std::memory_order_relaxed);
-    g_last_sr.store(stream_sample_rate, std::memory_order_relaxed);
-    g_last_ch.store(stream_channels, std::memory_order_relaxed);
-
-    return numFrames;
+    // 每个录音会话分配一个 wrapper。wrapper 与 stream 生命周期绑定，但 AAudio
+    // 不暴露释放时机，这里故意不回收——每个流仅泄漏 sizeof(CbWrapper) 字节，
+    // 现实中录音流数量极少，可忽略；换取回调线程零锁、零竞争。
+    auto* w = new CbWrapper{callback, userData};
+    g_orig_setDataCallback(builder, &my_data_callback, w);
 }
 
 bool install_aaudio_hook() {
@@ -236,21 +330,36 @@ bool install_aaudio_hook() {
         return true;
     }
 
-    g_hook_stub = shadowhook_hook_sym_name(
+    g_read_hook_stub = shadowhook_hook_sym_name(
         "libaaudio.so",
         "AAudioStream_read",
         reinterpret_cast<void*>(my_AAudioStream_read),
         reinterpret_cast<void**>(&g_orig_AAudioStream_read)
     );
-    if (!g_hook_stub) {
+    if (!g_read_hook_stub) {
         int err = shadowhook_get_errno();
         const char* msg = shadowhook_to_errmsg(err);
         LOGE("hook AAudioStream_read failed: err=%d %s", err, msg ? msg : "?");
         g_hook_installed.store(false);
         return false;
     }
-
     LOGI("AAudioStream_read hook installed");
+
+    // data-callback 路径——失败不致命，阻塞 read 路径仍可用。
+    g_setcb_hook_stub = shadowhook_hook_sym_name(
+        "libaaudio.so",
+        "AAudioStreamBuilder_setDataCallback",
+        reinterpret_cast<void*>(my_setDataCallback),
+        reinterpret_cast<void**>(&g_orig_setDataCallback)
+    );
+    if (!g_setcb_hook_stub) {
+        int err = shadowhook_get_errno();
+        const char* msg = shadowhook_to_errmsg(err);
+        LOGW("hook AAudioStreamBuilder_setDataCallback failed: err=%d %s", err, msg ? msg : "?");
+    } else {
+        LOGI("AAudioStreamBuilder_setDataCallback hook installed");
+    }
+
     return true;
 }
 

@@ -1,4 +1,6 @@
 #include "glass_aaudio.h"
+#include "glass_opensl.h"
+#include "glass_audiorecord.h"
 #include "glass_log.h"
 
 #include <cerrno>
@@ -12,7 +14,14 @@ extern "C" {
 
 JNIEXPORT jint JNICALL
 Java_io_mo_glassmic_xposed_NativeAAudioHook_nativeInstall(JNIEnv* env, jclass) {
-    return install_aaudio_hook() ? 0 : -1;
+    // AAudio 是主路径——失败才算装载失败。OpenSL ES 作为补充路径，失败不致命
+    // （例如某些机型/进程未用到 OpenSL 录音）。
+    bool aaudio_ok = install_aaudio_hook();
+    bool opensl_ok = install_opensl_hook();
+    bool arecord_ok = install_audiorecord_hook();
+    LOGI("native hooks installed: aaudio=%d opensl=%d audiorecord=%d",
+         aaudio_ok, opensl_ok, arecord_ok);
+    return aaudio_ok ? 0 : -1;
 }
 
 JNIEXPORT void JNICALL

@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- 无 RECORD_AUDIO 时前台服务降级到 specialUse 类型，需要此权限 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <!-- 通知 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -68,10 +70,16 @@
         </activity>
 
         <!-- ============ 前台服务（含常驻通知） ============ -->
+        <!-- 同时声明 microphone 与 specialUse：有 RECORD_AUDIO 时用 microphone，
+             否则降级到 specialUse，避免无权限时 microphone 类型校验崩溃。 -->
         <service
             android:name=".service.GlassForegroundService"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:foregroundServiceType="microphone|specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="virtual_mic_audio_bridge" />
+        </service>
 
         <!-- ============ 悬浮窗服务 ============ -->
         <service

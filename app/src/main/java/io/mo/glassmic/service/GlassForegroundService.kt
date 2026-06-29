@@ -1,14 +1,17 @@
 package io.mo.glassmic.service
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
@@ -43,15 +46,7 @@ class GlassForegroundService : LifecycleService() {
         ensureChannel()
         // 创建运行哨兵——onDestroy 时删除
         runCatching { File(filesDir, Constants.RUNNING_SENTINEL).createNewFile() }
-        if (Build.VERSION.SDK_INT >= 34) {
-            startForeground(
-                Constants.NOTIF_ID,
-                buildNotification(),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            )
-        } else {
-            startForeground(Constants.NOTIF_ID, buildNotification())
-        }
+        startForegroundCompat()
         runtime.setEnabled(true)
         lifecycleScope.launch {
             if (playback.restorePersistedClip()) {
@@ -78,6 +73,48 @@ class GlassForegroundService : LifecycleService() {
         GlassLog.b("FgService") { "前台服务已停止" }
         super.onDestroy()
     }
+
+    /**
+     * 启动前台服务，并按运行时权限选择 FGS 类型。
+     *
+     * Android 14（API 34）对 microphone 类型有强校验：启动时必须已授予 RECORD_AUDIO，
+     * 否则 validateForegroundServiceType 抛 SecurityException 导致服务创建失败、App 崩溃。
+     * 本服务自身不直接录音（麦克风替换发生在被注入进程），因此未授权时降级到 specialUse
+     * 类型（无运行时权限门槛、无时长限制）。再以多级 try-catch 兜底，确保任何情况下不崩。
+     */
+    private fun startForegroundCompat() {
+        if (Build.VERSION.SDK_INT < 34) {
+            runCatching { startForeground(Constants.NOTIF_ID, buildNotification()) }
+                .onFailure { GlassLog.b("FgService") { "startForeground 失败: ${it.message}" } }
+            return
+        }
+
+        val preferred = if (hasRecordAudioPermission()) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        } else {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        }
+
+        // 依次尝试：首选类型 → specialUse → 无类型。任一成功即返回。
+        val attempts = linkedSetOf(
+            preferred,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        )
+        for (type in attempts) {
+            try {
+                startForeground(Constants.NOTIF_ID, buildNotification(), type)
+                return
+            } catch (t: Throwable) {
+                GlassLog.b("FgService") { "startForeground type=$type 失败: ${t.message}" }
+            }
+        }
+        runCatching { startForeground(Constants.NOTIF_ID, buildNotification()) }
+            .onFailure { GlassLog.b("FgService") { "startForeground 兜底失败: ${it.message}" } }
+    }
+
+    private fun hasRecordAudioPermission(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
 
     private fun ensureChannel() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
