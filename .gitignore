@@ -31,3 +31,4 @@ keystore.properties
 
 # Logs
 *.log
+.vscode/settings.json
