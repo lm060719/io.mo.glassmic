@@ -155,7 +155,7 @@
 
     <string name="settings_section_compat">兼容性</string>
     <string name="settings_visibility_compat">严格 ROM 兼容模式</string>
-    <string name="settings_visibility_compat_hint">仅当「目标应用注入成功却没效果」时才开启，多见于 LineageOS 等偏原生系统。开启后需重启手机生效。普通系统无需开启。</string>
+    <string name="settings_visibility_compat_hint">无效果时打开，会请求 Root 授权，授权后重启手机生效。</string>
 
     <string name="settings_section_experimental">实验功能</string>
     <string name="settings_experimental_unlock">解锁实验功能</string>

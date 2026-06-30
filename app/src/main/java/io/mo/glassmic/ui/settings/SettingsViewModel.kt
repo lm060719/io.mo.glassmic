@@ -61,8 +61,12 @@ class SettingsViewModel @Inject constructor(
     val visibilityCompat: StateFlow<Boolean> = _visibilityCompat.asStateFlow()
 
     fun setVisibilityCompat(enabled: Boolean) {
-        visibilityCompatRepo.setEnabled(enabled)
-        _visibilityCompat.value = enabled
+        _visibilityCompat.value = enabled  // 立即回显
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val ok = visibilityCompatRepo.setEnabled(enabled)
+            // 开启时若 Root 写入失败（多半是未授权 su），回滚开关让用户察觉。
+            if (enabled && !ok) _visibilityCompat.value = false
+        }
     }
 
     private val _exporting = MutableStateFlow(false)
