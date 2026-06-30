@@ -42,7 +42,7 @@ class GlassMicXposedModule : XposedModule() {
     }
 
     override fun onSystemServerStarting(param: XposedModuleInterface.SystemServerStartingParam) {
-        log(Log.INFO, TAG, "loaded in system_server")
+        log(Log.INFO, TAG, "loaded in system_server (build=viscompat-r2)")
         // 不在 system_server 里装 audio hook——保护核心进程。
         // 仅当用户开启「严格 ROM 兼容」时，安装"包可见性放行"hook（只放行本模块包）。
         runCatching {
@@ -64,18 +64,22 @@ class GlassMicXposedModule : XposedModule() {
      * 全程异常保护，读不到一律按关闭处理。
      */
     private fun isVisibilityCompatEnabled(): Boolean {
-        val byProp = runCatching {
+        val propVal = runCatching {
             @Suppress("PrivateApi")
             val sp = Class.forName("android.os.SystemProperties")
             val get = sp.getMethod("get", String::class.java, String::class.java)
-            (get.invoke(null, Constants.PROP_VISIBILITY_COMPAT, "0") as? String) == "1"
-        }.getOrDefault(false)
-        if (byProp) return true
-
-        return runCatching {
+            get.invoke(null, Constants.PROP_VISIBILITY_COMPAT, "") as? String
+        }.getOrNull()
+        val prefVal = runCatching {
             getRemotePreferences(Constants.REMOTE_PREFS)
                 .getBoolean(Constants.KEY_VISIBILITY_COMPAT, false)
-        }.getOrDefault(false)
+        }.getOrNull()
+        // 诊断：直接打印两条来源的实际读数，便于远程定位「开关没生效」卡在哪一步。
+        log(
+            Log.INFO, TAG,
+            "visibility compat read: prop='${propVal ?: "<null>"}' remotePref=${prefVal ?: "<null>"}"
+        )
+        return propVal == "1" || prefVal == true
     }
 
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {

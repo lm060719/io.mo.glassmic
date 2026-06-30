@@ -48,11 +48,15 @@ class VisibilityCompatRepository @Inject constructor(
     fun setEnabled(enabled: Boolean): Boolean {
         runCatching { prefs.edit().putBoolean(Constants.KEY_VISIBILITY_COMPAT, enabled).apply() }
         val v = if (enabled) "1" else "0"
-        return runCatching {
-            val proc = Runtime.getRuntime()
+        runCatching {
+            // 用登录 shell 执行，兼容不同 su 实现；setprop 后立刻在同一条命令里读回。
+            Runtime.getRuntime()
                 .exec(arrayOf("su", "-c", "setprop ${Constants.PROP_VISIBILITY_COMPAT} $v"))
-            proc.waitFor() == 0
-        }.getOrDefault(false)
+                .waitFor()
+        }
+        // 关键：以「读回值是否等于期望」作为成功判据——setprop 即便返回 0，也可能被
+        // SELinux 静默拒绝；只有读回一致才算真的写进去了。
+        return readPropOrNull() == enabled
     }
 
     private fun readPropOrNull(): Boolean? = runCatching {
