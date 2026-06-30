@@ -10,6 +10,8 @@ import io.mo.glassmic.data.diag.DiagnosticBundler
 import io.mo.glassmic.data.runtime.AudioStatsRepository
 import io.mo.glassmic.data.runtime.HookStatus
 import io.mo.glassmic.data.runtime.HookStatusRepository
+import io.mo.glassmic.data.runtime.VisibilityCompatRepository
+import kotlinx.coroutines.flow.asStateFlow
 import io.mo.glassmic.log.GlassLog
 import io.mo.glassmic.proto.AppConfig
 import io.mo.glassmic.proto.LogLevel
@@ -50,8 +52,18 @@ class SettingsViewModel @Inject constructor(
     private val bundler: DiagnosticBundler,
     private val probe: AudioPipelineProbe,
     private val audioStatsRepo: AudioStatsRepository,
+    private val visibilityCompatRepo: VisibilityCompatRepository,
     hookStatusRepo: HookStatusRepository
 ) : ViewModel() {
+
+    private val _visibilityCompat = MutableStateFlow(visibilityCompatRepo.isEnabled())
+    /** 「严格 ROM 兼容」开关状态，UI 单独 collect。 */
+    val visibilityCompat: StateFlow<Boolean> = _visibilityCompat.asStateFlow()
+
+    fun setVisibilityCompat(enabled: Boolean) {
+        visibilityCompatRepo.setEnabled(enabled)
+        _visibilityCompat.value = enabled
+    }
 
     private val _exporting = MutableStateFlow(false)
     private val _exportedUri = MutableStateFlow<Uri?>(null)

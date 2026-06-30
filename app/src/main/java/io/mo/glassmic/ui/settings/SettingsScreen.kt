@@ -96,6 +96,7 @@ fun SettingsScreen(
         snackbarHost = { SnackbarHost(snackbar) { Snackbar(snackbarData = it) } }
     ) { inner ->
         val cfg = state.config
+        val visCompat by vm.visibilityCompat.collectAsState()
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -167,6 +168,15 @@ fun SettingsScreen(
                     busy = state.exporting,
                     onClick = vm::exportDiagnostic)
                 ActionRow(stringResource(R.string.settings_clear_log), onClick = vm::clearLog)
+            } }
+
+            item { Section(stringResource(R.string.settings_section_compat)) {
+                SwitchRow(
+                    label = stringResource(R.string.settings_visibility_compat),
+                    hint = stringResource(R.string.settings_visibility_compat_hint),
+                    checked = visCompat,
+                    onChange = vm::setVisibilityCompat
+                )
             } }
 
             item { Section(stringResource(R.string.settings_section_experimental)) {
