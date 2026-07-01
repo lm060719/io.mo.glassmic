@@ -30,4 +30,6 @@ target_link_libraries(glassmic_native
 target_link_options(glassmic_native PRIVATE
     "-Wl,--exclude-libs,ALL"
     "-Wl,--gc-sections"
+    # Android 15+ 16 KB 页对齐：LOAD 段按 16 KB 边界对齐（NDK r26/r27 默认仍是 4 KB，需显式指定）
+    "-Wl,-z,max-page-size=16384"
 )

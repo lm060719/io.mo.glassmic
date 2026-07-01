@@ -50,6 +50,8 @@ message FloatingWindow {
   FloatingMode default_mode = 2;
   float opacity = 3;
   FloatingSize size = 4;
+  // 自定义悬浮球图标相对路径（filesDir/floating/ 下），空则用默认图标
+  string custom_icon_path = 5;
 }
 
 enum FloatingMode {

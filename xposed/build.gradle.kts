@@ -26,7 +26,9 @@ android {
                     "-Wall"
                 )
                 arguments += listOf(
-                    "-DANDROID_STL=c++_shared"
+                    // 静态 STL：只有 libglassmic_native.so 用到 libc++（shadowhook 是纯 C），
+                    // 静态链接后不再打包 4KB 对齐的 libc++_shared.so，满足 Android 15+ 16KB 页要求
+                    "-DANDROID_STL=c++_static"
                 )
             }
         }

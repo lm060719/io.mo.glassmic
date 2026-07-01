@@ -2,50 +2,57 @@ package io.mo.glassmic.service
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.PixelFormat
-import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
-import android.view.MotionEvent
-import android.view.View
-import android.view.ViewConfiguration
 import android.view.WindowManager
-import android.widget.LinearLayout
-import android.widget.SeekBar
-import android.widget.TextView
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import io.mo.glassmic.core.model.SourceType
+import io.mo.glassmic.data.audio.FloatingIconStore
 import io.mo.glassmic.data.audio.PlaybackController
 import io.mo.glassmic.data.config.ConfigStore
+import io.mo.glassmic.data.db.AudioDao
 import io.mo.glassmic.data.runtime.RuntimeStateHolder
 import io.mo.glassmic.log.GlassLog
+import io.mo.glassmic.proto.AppConfig
+import io.mo.glassmic.proto.FloatingSize
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import kotlin.math.abs
 
+/**
+ * 悬浮窗服务（Compose 版）。
+ *
+ * 三态：球态 / 迷你播放条 / 选曲菜单，全部渲染在同一个挂到 WindowManager 的 ComposeView 里。
+ * 手势：
+ * - 未播放点击球 → 选曲菜单；播放中点击球 → 迷你播放条
+ * - 迷你条内「换音源」→ 选曲菜单；选中片段 → 立即播放并回到迷你条
+ * - 拖动球移动，松手贴边
+ */
 @AndroidEntryPoint
 class FloatingWindowService : LifecycleService() {
 
     @Inject lateinit var runtime: RuntimeStateHolder
     @Inject lateinit var playback: PlaybackController
     @Inject lateinit var configStore: ConfigStore
+    @Inject lateinit var audioDao: AudioDao
+    @Inject lateinit var iconStore: FloatingIconStore
 
     private var windowManager: WindowManager? = null
-    private var rootView: LinearLayout? = null
-    private var textView: TextView? = null
-    private var playButton: TextView? = null
-    private var progressBar: SeekBar? = null
-    private var timeView: TextView? = null
-    private var statusDot: View? = null
-    private var layoutParams: WindowManager.LayoutParams? = null
-    private var userSeeking = false
-    private var expanded = false
-    private var floatingOpacity = 0.85f
+    private var host: FloatingOverlayHost? = null
+    private var params: WindowManager.LayoutParams? = null
+
+    private val modeFlow = MutableStateFlow(FloatMode.BALL)
 
     override fun onCreate() {
         super.onCreate()
@@ -54,25 +61,8 @@ class FloatingWindowService : LifecycleService() {
             stopSelf()
             return
         }
-
-        showPanel()
+        showOverlay()
         runtime.setFloatingVisible(true)
-
-        lifecycleScope.launch {
-            runtime.flow.collect { rt ->
-                val activeFile = rt.currentSourceType == SourceType.FILE && rt.enabled && !rt.safeMode
-                updateVisuals(activeFile, rt.paused, rt.positionMs, rt.durationMs)
-            }
-        }
-        lifecycleScope.launch {
-            configStore.flow.collect { cfg ->
-                floatingOpacity = cfg.floatingWindow.opacity
-                    .takeIf { it > 0f }
-                    ?.coerceIn(0.2f, 1f)
-                    ?: 0.85f
-                rootView?.alpha = floatingOpacity
-            }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -86,18 +76,16 @@ class FloatingWindowService : LifecycleService() {
     }
 
     override fun onDestroy() {
-        rootView?.let { runCatching { windowManager?.removeView(it) } }
-        rootView = null
-        textView = null
-        playButton = null
-        progressBar = null
-        timeView = null
-        statusDot = null
+        host?.let { h ->
+            runCatching { windowManager?.removeView(h.view) }
+            h.onDestroy()
+        }
+        host = null
         runtime.setFloatingVisible(false)
         super.onDestroy()
     }
 
-    private fun showPanel() {
+    private fun showOverlay() {
         val wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         windowManager = wm
 
@@ -107,8 +95,7 @@ class FloatingWindowService : LifecycleService() {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
-
-        val params = WindowManager.LayoutParams(
+        val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             type,
@@ -120,314 +107,122 @@ class FloatingWindowService : LifecycleService() {
             x = 24
             y = 300
         }
-        layoutParams = params
+        params = lp
 
-        val dot = View(this).apply {
-            background = dotBackground(active = false)
-            val size = dp(8f).toInt()
-            layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                rightMargin = dp(8f).toInt()
-                gravity = Gravity.CENTER_VERTICAL
+        val overlayHost = FloatingOverlayHost(this).also { it.onCreate() }
+        host = overlayHost
+        overlayHost.setContent {
+            MaterialTheme {
+                val rt by runtime.flow.collectAsState()
+                val cfg by configStore.flow.collectAsState(initial = AppConfig.getDefaultInstance())
+                val groups by audioDao.observeGroups().collectAsState(initial = emptyList())
+                val allClips by audioDao.observeAllClips().collectAsState(initial = emptyList())
+                val mode by modeFlow.collectAsState()
+
+                val activeFile = rt.currentSourceType == SourceType.FILE && rt.enabled && !rt.safeMode
+                val currentId = cfg.currentAudioId
+                val currentName = allClips.firstOrNull { it.id == currentId }?.displayName
+
+                FloatingBubbleRoot(
+                    mode = mode,
+                    activeFile = activeFile,
+                    paused = rt.paused,
+                    positionMs = rt.positionMs,
+                    durationMs = rt.durationMs,
+                    currentName = currentName,
+                    sizeDp = sizeToDp(cfg.floatingWindow.size),
+                    iconPath = cfg.floatingWindow.customIconPath.takeIf { it.isNotBlank() }
+                        ?.let { iconStore.iconFile(it).absolutePath },
+                    opacity = cfg.floatingWindow.opacity.takeIf { it > 0f } ?: 0.85f,
+                    groups = groups.map { FloatGroupItem(it.id, it.emoji, it.name) },
+                    clipsProvider = { gid ->
+                        audioDao.observeClipsInGroup(gid).map { list ->
+                            list.map { FloatClipItem(it.id, it.displayName, it.id == currentId) }
+                        }
+                    },
+                    onBallTap = { onBallTap(activeFile) },
+                    onTogglePause = { playback.togglePause() },
+                    onSeek = { frac -> onSeek(frac, rt.durationMs) },
+                    onOpenMenu = { setMode(FloatMode.MENU) },
+                    onCollapse = { setMode(FloatMode.BALL) },
+                    onSelectClip = { clipId -> onSelectClip(clipId) },
+                    onDragBy = { dx, dy -> onDragBy(dx, dy) },
+                    onDragEnd = { onDragEnd() },
+                )
             }
         }
-
-        val title = TextView(this).apply {
-            text = "GlassMic"
-            setTextColor(Color.WHITE)
-            textSize = 14f
-            includeFontPadding = false
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                weight = 1f
-                gravity = Gravity.CENTER_VERTICAL
-            }
-        }
-
-        val button = TextView(this).apply {
-            text = "||"
-            setTextColor(Color.WHITE)
-            textSize = 13f
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            background = buttonBackground(enabled = false)
-            val size = dp(30f).toInt()
-            layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                leftMargin = dp(8f).toInt()
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            isEnabled = false
-            setOnClickListener { playback.togglePause() }
-            setOnTouchListener { _, _ -> false }
-        }
-
-        val topRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            addView(dot)
-            addView(title)
-            addView(button)
-        }
-
-        val seek = SeekBar(this).apply {
-            max = 1000
-            progress = 0
-            isEnabled = false
-            splitTrack = false
-            setPadding(0, dp(4f).toInt(), 0, 0)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(32f).toInt()
-            )
-            setOnTouchListener { _, _ -> false }
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) = Unit
-
-                override fun onStartTrackingTouch(bar: SeekBar) {
-                    userSeeking = true
-                }
-
-                override fun onStopTrackingTouch(bar: SeekBar) {
-                    val duration = runtime.value.durationMs
-                    if (duration > 0) {
-                        val target = duration * bar.progress / bar.max
-                        lifecycleScope.launch { playback.seekTo(target) }
-                    }
-                    userSeeking = false
-                }
-            })
-        }
-
-        val time = TextView(this).apply {
-            text = "00:00 / 00:00"
-            setTextColor(Color.argb(0xCC, 0xFF, 0xFF, 0xFF))
-            textSize = 11f
-            includeFontPadding = false
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = idleBackground()
-            minimumWidth = dp(240f).toInt()
-            setPadding(dp(14f).toInt(), dp(8f).toInt(), dp(14f).toInt(), dp(9f).toInt())
-            addView(topRow)
-            addView(seek)
-            addView(time)
-        }
-
-        attachInteractions(container, params)
-
-        rootView = container
-        rootView?.alpha = floatingOpacity
-        textView = title
-        playButton = button
-        progressBar = seek
-        timeView = time
-        statusDot = dot
-        setExpanded(false, updateWindow = false)
-        wm.addView(container, params)
+        runCatching { wm.addView(overlayHost.view, lp) }
+            .onFailure { GlassLog.b("Float") { "addView 失败: ${it.message}" } }
     }
 
-    private fun attachInteractions(view: View, params: WindowManager.LayoutParams) {
-        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
-        var initialX = 0
-        var initialY = 0
-        var touchStartX = 0f
-        var touchStartY = 0f
-        var dragging = false
-        var downTime = 0L
+    // ============ 手势 / 交互回调 ============
+    private fun onBallTap(activeFile: Boolean) {
+        setMode(if (activeFile) FloatMode.MINI_BAR else FloatMode.MENU)
+    }
 
-        view.setOnTouchListener { v, ev ->
-            when (ev.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    initialX = params.x
-                    initialY = params.y
-                    touchStartX = ev.rawX
-                    touchStartY = ev.rawY
-                    dragging = false
-                    downTime = System.currentTimeMillis()
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = ev.rawX - touchStartX
-                    val dy = ev.rawY - touchStartY
-                    if (!dragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) {
-                        dragging = true
-                    }
-                    if (dragging) {
-                        params.x = (initialX + dx).toInt()
-                        params.y = (initialY + dy).toInt()
-                        runCatching { windowManager?.updateViewLayout(v, params) }
-                    }
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    if (!dragging && System.currentTimeMillis() - downTime < 400) {
-                        v.performClick()
-                    } else if (dragging) {
-                        snapToEdge(v, params)
-                    }
-                    true
-                }
-                MotionEvent.ACTION_CANCEL -> true
-                else -> false
-            }
-        }
-
-        view.setOnClickListener {
-            setExpanded(!expanded)
+    private fun onSelectClip(clipId: String) {
+        lifecycleScope.launch {
+            val ok = playback.setCurrentClip(clipId)
+            if (ok) setMode(FloatMode.MINI_BAR)
+            else GlassLog.b("Float") { "选中片段失败: $clipId" }
         }
     }
 
-    private fun snapToEdge(view: View, params: WindowManager.LayoutParams) {
-        val screenWidth = resources.displayMetrics.widthPixels
-        val viewWidth = view.width.takeIf { it > 0 } ?: dp(240f).toInt()
-        val centerX = params.x + viewWidth / 2
-        params.x = if (centerX < screenWidth / 2) 8 else screenWidth - viewWidth - 8
-        runCatching { windowManager?.updateViewLayout(view, params) }
+    private fun onSeek(frac: Float, durationMs: Long) {
+        if (durationMs <= 0) return
+        val target = (durationMs * frac).toLong().coerceIn(0L, durationMs)
+        lifecycleScope.launch { playback.seekTo(target) }
     }
 
-    private fun updateVisuals(activeFile: Boolean, paused: Boolean, positionMs: Long, durationMs: Long) {
-        val root = rootView ?: return
-        val title = textView ?: return
-        val dot = statusDot ?: return
-        val button = playButton ?: return
-        val seek = progressBar ?: return
-        val time = timeView ?: return
-
-        title.text = when {
-            !activeFile -> "GlassMic"
-            expanded -> if (paused) "Paused" else "Playing"
-            else -> "${formatMs(positionMs)} / ${formatMs(durationMs)}"
-        }
-
-        button.text = if (paused) ">" else "||"
-        button.isEnabled = activeFile
-        button.alpha = if (activeFile) 1f else 0.45f
-        button.background = buttonBackground(enabled = activeFile)
-
-        seek.isEnabled = activeFile && durationMs > 0
-        seek.alpha = if (seek.isEnabled) 1f else 0.45f
-        if (!userSeeking) {
-            seek.progress = if (durationMs > 0) {
-                ((positionMs.coerceIn(0L, durationMs) * seek.max) / durationMs).toInt()
-            } else {
-                0
-            }
-        }
-
-        time.text = if (activeFile) {
-            "${formatMs(positionMs)} / ${formatMs(durationMs)}"
-        } else {
-            "00:00 / 00:00"
-        }
-
-        dot.background = dotBackground(activeFile && !paused)
-        root.background = when {
-            activeFile && expanded -> activeBackground(paused)
-            activeFile -> capsuleBackground(paused)
-            else -> idleBackground()
-        }
+    private fun onDragBy(dx: Float, dy: Float) {
+        val lp = params ?: return
+        val h = host ?: return
+        lp.x += dx.toInt()
+        lp.y += dy.toInt()
+        runCatching { windowManager?.updateViewLayout(h.view, lp) }
     }
 
-    private fun setExpanded(value: Boolean, updateWindow: Boolean = true) {
-        if (expanded == value && updateWindow) return
-        expanded = value
-
-        val root = rootView ?: return
-        val title = textView ?: return
-        val button = playButton ?: return
-        val seek = progressBar ?: return
-        val time = timeView ?: return
-
-        title.layoutParams = LinearLayout.LayoutParams(
-            if (expanded) 0 else LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply {
-            weight = if (expanded) 1f else 0f
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        button.visibility = if (expanded) View.VISIBLE else View.GONE
-        seek.visibility = if (expanded) View.VISIBLE else View.GONE
-        time.visibility = if (expanded) View.VISIBLE else View.GONE
-        root.minimumWidth = if (expanded) dp(240f).toInt() else 0
-        root.setPadding(
-            dp(14f).toInt(),
-            dp(if (expanded) 8f else 8f).toInt(),
-            dp(14f).toInt(),
-            dp(if (expanded) 9f else 8f).toInt()
-        )
-
-        val rt = runtime.value
-        val activeFile = rt.currentSourceType == SourceType.FILE && rt.enabled && !rt.safeMode
-        updateVisuals(activeFile, rt.paused, rt.positionMs, rt.durationMs)
-
-        if (updateWindow) {
-            layoutParams?.let { params ->
-                runCatching { windowManager?.updateViewLayout(root, params) }
-            }
-        }
+    private fun onDragEnd() {
+        // 松手后停在原地，仅做边界兜底，允许自由悬停（不贴边）
+        clampToBounds()
     }
 
-    private fun activeBackground(paused: Boolean): GradientDrawable = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        cornerRadius = dp(18f)
-        setColor(Color.argb(0xEE, 0x1C, 0x1C, 0x20))
-        setStroke(
-            dp(1f).toInt(),
-            if (paused) Color.argb(0x88, 0xFF, 0xCC, 0x33)
-            else Color.argb(0x88, 0x34, 0xC7, 0x59)
-        )
+    private fun setMode(mode: FloatMode) {
+        modeFlow.value = mode
+        // 展开态（迷你条/菜单）确保不超出屏幕右边
+        if (mode != FloatMode.BALL) clampExpandedX()
     }
 
-    private fun idleBackground(): GradientDrawable = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        cornerRadius = dp(20f)
-        setColor(Color.argb(0xCC, 0x1C, 0x1C, 0x20))
-        setStroke(dp(1f).toInt(), Color.argb(0x40, 0xFF, 0xFF, 0xFF))
+    /** 边界兜底：把悬浮球约束在屏幕内，但不贴边，保留自由悬停位置。 */
+    private fun clampToBounds() {
+        val lp = params ?: return
+        val h = host ?: return
+        val screenW = resources.displayMetrics.widthPixels
+        val screenH = resources.displayMetrics.heightPixels
+        val viewW = h.view.width.takeIf { it > 0 } ?: dpToPx(56)
+        val viewH = h.view.height.takeIf { it > 0 } ?: dpToPx(56)
+        lp.x = lp.x.coerceIn(0, (screenW - viewW).coerceAtLeast(0))
+        lp.y = lp.y.coerceIn(0, (screenH - viewH).coerceAtLeast(0))
+        runCatching { windowManager?.updateViewLayout(h.view, lp) }
     }
 
-    private fun capsuleBackground(paused: Boolean): GradientDrawable = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        cornerRadius = dp(20f)
-        setColor(Color.argb(0xEE, 0x1C, 0x1C, 0x20))
-        setStroke(
-            dp(1f).toInt(),
-            if (paused) Color.argb(0x66, 0xFF, 0xCC, 0x33)
-            else Color.argb(0x66, 0x34, 0xC7, 0x59)
-        )
+    private fun clampExpandedX() {
+        val lp = params ?: return
+        val h = host ?: return
+        val screenW = resources.displayMetrics.widthPixels
+        val panelW = dpToPx(300)
+        if (lp.x + panelW > screenW) lp.x = (screenW - panelW).coerceAtLeast(8)
+        if (lp.x < 8) lp.x = 8
+        runCatching { windowManager?.updateViewLayout(h.view, lp) }
     }
 
-    private fun dotBackground(active: Boolean): GradientDrawable = GradientDrawable().apply {
-        shape = GradientDrawable.OVAL
-        setColor(
-            if (active) Color.argb(0xFF, 0x34, 0xC7, 0x59)
-            else Color.argb(0xFF, 0x9E, 0x9E, 0xA0)
-        )
+    private fun sizeToDp(size: FloatingSize): Dp = when (size) {
+        FloatingSize.SMALL -> 44.dp
+        FloatingSize.LARGE -> 72.dp
+        else -> 56.dp   // STANDARD / UNRECOGNIZED
     }
 
-    private fun buttonBackground(enabled: Boolean): GradientDrawable = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        cornerRadius = dp(15f)
-        setColor(
-            if (enabled) Color.argb(0x44, 0xFF, 0xFF, 0xFF)
-            else Color.argb(0x22, 0xFF, 0xFF, 0xFF)
-        )
-        setStroke(dp(1f).toInt(), Color.argb(0x44, 0xFF, 0xFF, 0xFF))
-    }
-
-    private fun dp(v: Float): Float = v * resources.displayMetrics.density
-
-    private fun formatMs(ms: Long): String {
-        val s = (ms / 1000).coerceAtLeast(0)
-        return "%02d:%02d".format(s / 60, s % 60)
-    }
+    private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
 
     companion object {
         fun start(ctx: Context) {

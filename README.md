@@ -13,8 +13,10 @@ GlassMic is an open-source virtual microphone and audio pipeline testing module 
 - Use playback policies: loop, silence after end, or return to the real microphone.
 - Restore the last selected audio source after the app process is killed.
 - Start restored audio in a paused state so playback is explicit.
-- Floating window with capsule mode, expanded playback controls, pause/resume, and seek bar.
-- Configurable floating window opacity.
+- Floating ball with customizable icon and size (small/standard/large).
+- Tap the ball to open a song menu and pick audio by group directly.
+- While playing, tap the ball for a mini control bar: pause/resume, seek, and switch source.
+- Configurable floating ball opacity.
 - Runtime routing through a foreground service and always-visible notification.
 - LSPosed integration with recommended scope limited to Android/system framework.
 - AudioRecord and AAudio input interception paths.

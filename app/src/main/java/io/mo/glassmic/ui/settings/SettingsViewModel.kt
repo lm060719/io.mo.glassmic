@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import io.mo.glassmic.data.audio.FloatingIconStore
 import io.mo.glassmic.data.config.ConfigStore
 import io.mo.glassmic.data.diag.AudioPipelineProbe
 import io.mo.glassmic.data.diag.DiagnosticBundler
@@ -14,6 +15,7 @@ import io.mo.glassmic.data.runtime.VisibilityCompatRepository
 import kotlinx.coroutines.flow.asStateFlow
 import io.mo.glassmic.log.GlassLog
 import io.mo.glassmic.proto.AppConfig
+import io.mo.glassmic.proto.FloatingSize
 import io.mo.glassmic.proto.LogLevel
 import io.mo.glassmic.proto.PlaybackPolicy
 import io.mo.glassmic.proto.ThemeMode
@@ -49,6 +51,7 @@ data class SettingsUiState(
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val configStore: ConfigStore,
+    private val floatingIconStore: FloatingIconStore,
     private val bundler: DiagnosticBundler,
     private val probe: AudioPipelineProbe,
     private val audioStatsRepo: AudioStatsRepository,
@@ -64,6 +67,10 @@ class SettingsViewModel @Inject constructor(
     fun refreshVisibilityCompat() {
         _visibilityCompat.value = visibilityCompatRepo.isEnabled()
     }
+
+    private val _iconError = MutableStateFlow<String?>(null)
+    /** 悬浮球图标导入错误，UI 单独 collect 弹提示。 */
+    val iconError: StateFlow<String?> = _iconError.asStateFlow()
 
     fun setVisibilityCompat(enabled: Boolean) {
         _visibilityCompat.value = enabled  // 立即回显
@@ -128,6 +135,21 @@ class SettingsViewModel @Inject constructor(
             it.setFloatingWindow(it.floatingWindow.toBuilder().setOpacity(opacity.coerceIn(0.2f, 1f)))
         }
     }
+
+    fun setFloatingSize(size: FloatingSize) = viewModelScope.launch {
+        configStore.update { it.setFloatingWindow(it.floatingWindow.toBuilder().setSize(size)) }
+    }
+
+    /** 导入自定义悬浮球图标：复制到私有目录并持久化相对路径。传 null 表示清除，回退默认图标。 */
+    fun setFloatingIcon(uri: Uri?) = viewModelScope.launch {
+        val relPath = if (uri == null) "" else floatingIconStore.importIcon(uri) ?: run {
+            _iconError.value = "图标导入失败"
+            return@launch
+        }
+        configStore.update { it.setFloatingWindow(it.floatingWindow.toBuilder().setCustomIconPath(relPath)) }
+    }
+
+    fun consumeIconError() { _iconError.value = null }
 
     // ============ 默认播放策略 ============
     fun setPolicy(policy: PlaybackPolicy) = viewModelScope.launch {

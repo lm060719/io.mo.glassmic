@@ -1,6 +1,8 @@
 package io.mo.glassmic.ui.settings
 
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,6 +53,7 @@ import io.mo.glassmic.BuildConfig
 import io.mo.glassmic.R
 import io.mo.glassmic.data.diag.AudioPipelineProbe
 import io.mo.glassmic.data.runtime.HookActivity
+import io.mo.glassmic.proto.FloatingSize
 import io.mo.glassmic.proto.LogLevel
 import io.mo.glassmic.proto.PlaybackPolicy
 import io.mo.glassmic.proto.ThemeMode
@@ -81,6 +84,14 @@ fun SettingsScreen(
     LaunchedEffect(state.exportError) {
         state.exportError?.let { snackbar.showSnackbar(it); vm.consumeExport() }
     }
+
+    val iconError by vm.iconError.collectAsState()
+    LaunchedEffect(iconError) {
+        iconError?.let { snackbar.showSnackbar(it); vm.consumeIconError() }
+    }
+    val iconPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) vm.setFloatingIcon(uri) }
 
     Scaffold(
         topBar = {
@@ -120,6 +131,12 @@ fun SettingsScreen(
                 OpacitySlider(
                     value = cfg.floatingWindow.opacity.takeIf { it > 0f } ?: 0.85f,
                     onChange = vm::setFloatingOpacity
+                )
+                FloatingSizePicker(cfg.floatingWindow.size, vm::setFloatingSize)
+                FloatingIconRow(
+                    hasCustom = cfg.floatingWindow.customIconPath.isNotBlank(),
+                    onPick = { iconPickerLauncher.launch(arrayOf("image/*")) },
+                    onReset = { vm.setFloatingIcon(null) }
                 )
             } }
 
@@ -374,6 +391,49 @@ private fun OpacitySlider(value: Float, onChange: (Float) -> Unit) {
             valueRange = 0.2f..1f,
             steps = 7
         )
+    }
+}
+
+// ============ 悬浮球大小 ============
+@Composable
+private fun FloatingSizePicker(current: FloatingSize, onSelect: (FloatingSize) -> Unit) {
+    Column {
+        Text(
+            stringResource(R.string.settings_floating_size),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
+        )
+        val effective = if (current == FloatingSize.UNRECOGNIZED) FloatingSize.STANDARD else current
+        PolicyOption(stringResource(R.string.settings_floating_size_small),
+            effective == FloatingSize.SMALL) { onSelect(FloatingSize.SMALL) }
+        PolicyOption(stringResource(R.string.settings_floating_size_standard),
+            effective == FloatingSize.STANDARD) { onSelect(FloatingSize.STANDARD) }
+        PolicyOption(stringResource(R.string.settings_floating_size_large),
+            effective == FloatingSize.LARGE) { onSelect(FloatingSize.LARGE) }
+    }
+}
+
+// ============ 悬浮球图标 ============
+@Composable
+private fun FloatingIconRow(hasCustom: Boolean, onPick: () -> Unit, onReset: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.settings_floating_icon), style = MaterialTheme.typography.bodyLarge)
+            Text(
+                stringResource(R.string.settings_floating_icon_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+            )
+        }
+        if (hasCustom) {
+            TextButton(onClick = onReset) { Text(stringResource(R.string.settings_floating_icon_reset)) }
+        }
+        TextButton(onClick = onPick) { Text(stringResource(R.string.settings_floating_icon_pick)) }
     }
 }
 

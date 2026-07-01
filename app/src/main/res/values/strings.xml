@@ -90,7 +90,6 @@
     <string name="library_empty_groups">还没有片段组，先新建一个</string>
     <string name="library_empty_clips">该组还没有音频，点击下方按钮导入</string>
     <string name="library_select_a_group">先选择或新建一个片段组</string>
-    <string name="library_set_current">设为当前音源</string>
     <string name="library_preview">试听</string>
     <string name="library_preview_stop">停止试听</string>
     <string name="library_delete">删除</string>
@@ -125,6 +124,15 @@
     <string name="settings_floating_enabled">允许悬浮窗</string>
     <string name="settings_floating_enabled_hint">主开关开启后才会显示</string>
     <string name="settings_floating_opacity">不透明度</string>
+    <string name="settings_floating_size">悬浮球大小</string>
+    <string name="settings_floating_size_small">小</string>
+    <string name="settings_floating_size_standard">标准</string>
+    <string name="settings_floating_size_large">大</string>
+    <string name="settings_floating_icon">悬浮球图标</string>
+    <string name="settings_floating_icon_hint">自定义悬浮球图标，留空使用默认</string>
+    <string name="settings_floating_icon_pick">选择图片</string>
+    <string name="settings_floating_icon_reset">恢复默认</string>
+    <string name="settings_floating_icon_error">图标导入失败</string>
 
     <string name="settings_section_policy">默认播放策略</string>
     <string name="settings_policy_hint">片段组未单独设置时使用</string>

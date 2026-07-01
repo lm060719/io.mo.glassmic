@@ -8,7 +8,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import io.mo.glassmic.core.model.PlaybackPolicy
 import io.mo.glassmic.data.audio.AudioFileResolver
 import io.mo.glassmic.data.audio.AudioImportRepository
-import io.mo.glassmic.data.audio.PlaybackController
 import io.mo.glassmic.data.config.ConfigStore
 import io.mo.glassmic.data.db.AudioClipEntity
 import io.mo.glassmic.data.db.AudioDao
@@ -38,7 +37,6 @@ data class LibraryUiState(
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     private val importer: AudioImportRepository,
-    private val playback: PlaybackController,
     private val resolver: AudioFileResolver,
     configStore: ConfigStore,
     audioDao: AudioDao
@@ -141,14 +139,6 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             if (_previewClipId.value == clipId) stopPreview()
             importer.deleteClip(clipId)
-        }
-    }
-
-    fun setAsCurrent(clip: AudioClipEntity) {
-        viewModelScope.launch {
-            stopPreview()
-            val ok = playback.setCurrentClip(clip.id)
-            if (!ok) _error.value = "无法设为当前音源"
         }
     }
 
