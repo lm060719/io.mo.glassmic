@@ -35,14 +35,13 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            // 当前装的是 CMake 4.1.2
-            version = "4.1.2"
+            // 稳定版 CMake，元数据 schema 与 AGP 8.x 匹配（避免 CXX5304 警告）
+            version = "3.22.1"
         }
     }
 
-    // 当前装的是 NDK 30.0.14904198 rc1
-    // 注：rc 版本可能有未发现的 toolchain bug；遇到诡异编译错误时建议补装一个 r26/r27 稳定版替换此行
-    ndkVersion = "30.0.14904198"
+    // 稳定版 NDK r26b，规避 rc 版潜在 toolchain bug，并消除 CXX5304（SDK XML v4）警告
+    ndkVersion = "26.1.10909125"
 
     buildFeatures {
         prefab = true
