@@ -42,7 +42,7 @@ Dependency flow: `app` → `core`, `app` → `xposed` → `core`. The `xposed` m
 - `ksp.useKSP2=false` in `gradle.properties` — KSP2 has Hilt + Room compatibility issues.
 - `jniLibs.pickFirsts` for `libshadowhook.so` and `libshadowhook_nothing.so` — the .so comes from both the `:xposed` module and the shadowhook AAR; content is identical.
 - Resource configurations: only `zh-rCN` and `en` are bundled.
-- `minSdk = 30` (Android 11), `targetSdk = 35` (Android 15), `compileSdk = 35`.
+- `minSdk = 29` (Android 10), `targetSdk = 35` (Android 15), `compileSdk = 35`.
 - Release builds use ProGuard with minification and resource shrinking enabled.
 
 ## LSPosed Scope

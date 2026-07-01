@@ -13,7 +13,7 @@ android {
 
     defaultConfig {
         applicationId = "io.mo.glassmic"
-        minSdk = 30
+        minSdk = 29
         targetSdk = 35
         versionCode = 5
         versionName = "1.2.0"

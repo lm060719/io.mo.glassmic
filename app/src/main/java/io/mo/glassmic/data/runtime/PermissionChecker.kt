@@ -41,7 +41,7 @@ class PermissionChecker @Inject constructor(
         overlay = checkOverlay(),
         fileAccess = checkFileAccess(),
         foregroundService = checkForegroundService(),
-        androidVersionSupported = Build.VERSION.SDK_INT >= 30,
+        androidVersionSupported = Build.VERSION.SDK_INT >= 29,
         safeModeOk = !safeModeRepo.isActive()
     )
 
@@ -85,7 +85,7 @@ class PermissionChecker @Inject constructor(
             ) == PackageManager.PERMISSION_GRANTED
             return if (granted) PermissionStatus.GRANTED else PermissionStatus.DENIED
         }
-        // API 30-32: READ_EXTERNAL_STORAGE
+        // API 29-32: READ_EXTERNAL_STORAGE
         val granted = ContextCompat.checkSelfPermission(
             context, Manifest.permission.READ_EXTERNAL_STORAGE
         ) == PackageManager.PERMISSION_GRANTED
