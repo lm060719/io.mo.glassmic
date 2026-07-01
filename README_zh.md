@@ -22,7 +22,7 @@ GlassMic 是一个面向 Root Android 设备和 LSPosed 的开源虚拟麦克风
 
 ## 环境要求
 
-- Android 15 / 16 目标环境。
+- 最低支持 Android 10（API 29），推荐 Android 15 / 16 目标环境。
 - Root 权限，例如 Magisk 或 KernelSU。
 - LSPosed，并支持 libxposed API。
 - 通知、悬浮窗、文件访问、前台服务等 Android 权限。

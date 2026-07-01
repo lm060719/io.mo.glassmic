@@ -24,7 +24,7 @@ GlassMic is an open-source virtual microphone and audio pipeline testing module 
 
 ## Requirements
 
-- Android 15/16 target environment.
+- Android 10 (API 29) minimum; Android 15/16 recommended target environment.
 - Root access, for example Magisk or KernelSU.
 - LSPosed with libxposed API support.
 - Android notification, overlay, file access, and foreground service permissions.
