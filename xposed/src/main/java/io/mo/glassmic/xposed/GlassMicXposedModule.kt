@@ -42,7 +42,7 @@ class GlassMicXposedModule : XposedModule() {
     }
 
     override fun onSystemServerStarting(param: XposedModuleInterface.SystemServerStartingParam) {
-        log(Log.INFO, TAG, "loaded in system_server (build=viscompat-r2)")
+        log(Log.INFO, TAG, "loaded in system_server")
         // 不在 system_server 里装 audio hook——保护核心进程。
         // 仅当用户开启「严格 ROM 兼容」时，安装"包可见性放行"hook（只放行本模块包）。
         runCatching {

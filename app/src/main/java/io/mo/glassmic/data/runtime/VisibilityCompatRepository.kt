@@ -35,11 +35,13 @@ class VisibilityCompatRepository @Inject constructor(
         }
     }
 
-    /** UI 回显：优先以系统属性为准（真正决定 system_server 行为的来源），回退本地 prefs。 */
-    fun isEnabled(): Boolean {
-        readPropOrNull()?.let { return it }
-        return runCatching { prefs.getBoolean(Constants.KEY_VISIBILITY_COMPAT, false) }.getOrDefault(false)
-    }
+    /**
+     * 开关真实状态：**只以系统属性为准**——只有 `prop == "1"` 才算开启。
+     *
+     * 这样 UI 永远等于「system_server 实际会读到的值」：只要属性没被成功设为 1
+     * （如首次 Root 授权没赶上、设置失败等），开关就显示关闭，不会误导用户「以为开着」。
+     */
+    fun isEnabled(): Boolean = readPropOrNull() == true
 
     /**
      * 写开关。**阻塞**（含 su 调用），调用方需放在 IO 线程。

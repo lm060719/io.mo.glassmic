@@ -60,6 +60,11 @@ class SettingsViewModel @Inject constructor(
     /** 「严格 ROM 兼容」开关状态，UI 单独 collect。 */
     val visibilityCompat: StateFlow<Boolean> = _visibilityCompat.asStateFlow()
 
+    /** 每次进入设置页时按系统属性真实值刷新开关（属性非 1 一律显示关闭）。 */
+    fun refreshVisibilityCompat() {
+        _visibilityCompat.value = visibilityCompatRepo.isEnabled()
+    }
+
     fun setVisibilityCompat(enabled: Boolean) {
         _visibilityCompat.value = enabled  // 立即回显
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
