@@ -96,6 +96,9 @@ fun SettingsScreen(
         snackbarHost = { SnackbarHost(snackbar) { Snackbar(snackbarData = it) } }
     ) { inner ->
         val cfg = state.config
+        val visCompat by vm.visibilityCompat.collectAsState()
+        // 每次进入设置页，按系统属性真实值刷新开关（属性非 1 显示关闭，避免误导）
+        LaunchedEffect(Unit) { vm.refreshVisibilityCompat() }
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -167,6 +170,15 @@ fun SettingsScreen(
                     busy = state.exporting,
                     onClick = vm::exportDiagnostic)
                 ActionRow(stringResource(R.string.settings_clear_log), onClick = vm::clearLog)
+            } }
+
+            item { Section(stringResource(R.string.settings_section_compat)) {
+                SwitchRow(
+                    label = stringResource(R.string.settings_visibility_compat),
+                    hint = stringResource(R.string.settings_visibility_compat_hint),
+                    checked = visCompat,
+                    onChange = vm::setVisibilityCompat
+                )
             } }
 
             item { Section(stringResource(R.string.settings_section_experimental)) {

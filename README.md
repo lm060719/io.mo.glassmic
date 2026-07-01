@@ -34,7 +34,7 @@ GlassMic is an open-source virtual microphone and audio pipeline testing module 
 
 1. Install the APK.
 2. Enable the GlassMic module in LSPosed.
-3. It is recommended to set the scope to `android`, `system`, and the target software where the changes should take effect..
+3. Use the recommended LSPosed scope: `android` and `system`.
 4. Reboot the device so the module is loaded cleanly.
 5. Open GlassMic, complete onboarding, grant permissions, import an audio file, and select it as the current source.
 6. Start GlassMic from the main screen when you want the virtual microphone to be active.

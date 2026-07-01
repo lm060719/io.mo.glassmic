@@ -10,6 +10,8 @@ import io.mo.glassmic.data.diag.DiagnosticBundler
 import io.mo.glassmic.data.runtime.AudioStatsRepository
 import io.mo.glassmic.data.runtime.HookStatus
 import io.mo.glassmic.data.runtime.HookStatusRepository
+import io.mo.glassmic.data.runtime.VisibilityCompatRepository
+import kotlinx.coroutines.flow.asStateFlow
 import io.mo.glassmic.log.GlassLog
 import io.mo.glassmic.proto.AppConfig
 import io.mo.glassmic.proto.LogLevel
@@ -50,8 +52,27 @@ class SettingsViewModel @Inject constructor(
     private val bundler: DiagnosticBundler,
     private val probe: AudioPipelineProbe,
     private val audioStatsRepo: AudioStatsRepository,
+    private val visibilityCompatRepo: VisibilityCompatRepository,
     hookStatusRepo: HookStatusRepository
 ) : ViewModel() {
+
+    private val _visibilityCompat = MutableStateFlow(visibilityCompatRepo.isEnabled())
+    /** 「严格 ROM 兼容」开关状态，UI 单独 collect。 */
+    val visibilityCompat: StateFlow<Boolean> = _visibilityCompat.asStateFlow()
+
+    /** 每次进入设置页时按系统属性真实值刷新开关（属性非 1 一律显示关闭）。 */
+    fun refreshVisibilityCompat() {
+        _visibilityCompat.value = visibilityCompatRepo.isEnabled()
+    }
+
+    fun setVisibilityCompat(enabled: Boolean) {
+        _visibilityCompat.value = enabled  // 立即回显
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val ok = visibilityCompatRepo.setEnabled(enabled)
+            // 开启时若 Root 写入失败（多半是未授权 su），回滚开关让用户察觉。
+            if (enabled && !ok) _visibilityCompat.value = false
+        }
+    }
 
     private val _exporting = MutableStateFlow(false)
     private val _exportedUri = MutableStateFlow<Uri?>(null)

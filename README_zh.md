@@ -32,7 +32,7 @@ GlassMic 是一个面向 Root Android 设备和 LSPosed 的开源虚拟麦克风
 
 1. 安装 APK。
 2. 在 LSPosed 中启用 GlassMic 模块。
-3. 推荐作用域使用 `android` 和 `system`以及需要生效的目标软件。
+3. 推荐作用域使用 `android` 和 `system`。
 4. 重启设备，让模块完整加载。
 5. 打开 GlassMic，完成首次引导并授予权限。
 6. 导入音频文件，并设置为当前音源。
