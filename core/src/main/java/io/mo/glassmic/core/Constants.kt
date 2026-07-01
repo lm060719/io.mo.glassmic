@@ -47,4 +47,15 @@ object Constants {
 
     // Xposed scope 文件名保留给后续导出/诊断使用
     const val XPOSED_SCOPE_FILE = "xposed_scope.txt"
+
+    // ============ 严格 ROM 兼容：包可见性放行 ============
+    // 偏原生/隐私 ROM（LineageOS、部分魅族等）严格执行 Android 11+ 的包可见性过滤，
+    // 导致被注入的目标 App 进程「看不到」本模块，无法访问 RuntimeProvider/PcmStreamProvider，
+    // 拿不到决策与 PCM。开启后在 system_server 放行对本包的可见性查询。默认关闭。
+    //
+    // 模块 remote preferences（App 用 MODE_WORLD_READABLE 写、system_server 只读）
+    const val REMOTE_PREFS = "glassmic_remote"
+    const val KEY_VISIBILITY_COMPAT = "visibility_compat"
+    // 调试/高级用户用的 system property 覆盖（重启失效，仅便于排查）
+    const val PROP_VISIBILITY_COMPAT = "persist.sys.glassmic_vis"
 }

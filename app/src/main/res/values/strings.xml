@@ -153,6 +153,10 @@
     <string name="settings_intercept_last_pkg">最近调用方</string>
     <string name="settings_intercept_format">采样率 / 声道</string>
 
+    <string name="settings_section_compat">兼容性</string>
+    <string name="settings_visibility_compat">严格 ROM 兼容模式</string>
+    <string name="settings_visibility_compat_hint">无效果时打开，会请求 Root 授权，授权后重启手机生效。</string>
+
     <string name="settings_section_experimental">实验功能</string>
     <string name="settings_experimental_unlock">解锁实验功能</string>
     <string name="settings_experimental_unlock_hint">仅用于本机音频链路测试</string>
