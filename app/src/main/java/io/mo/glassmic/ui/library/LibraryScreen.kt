@@ -1,7 +1,6 @@
 package io.mo.glassmic.ui.library
 
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -85,8 +84,10 @@ fun LibraryScreen(
     var policyEditingGroup by remember { mutableStateOf<AudioGroupEntity?>(null) }
     var renamingClip by remember { mutableStateOf<AudioClipEntity?>(null) }
 
+    // 批量导入：优先调用系统自带〖文件〗(DocumentsUI)，支持多选
+    val importContract = remember { OpenMultipleAudioViaFiles() }
     val importLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenMultipleDocuments()
+        contract = importContract
     ) { uris ->
         if (uris.isNotEmpty()) vm.importUris(uris)
     }
