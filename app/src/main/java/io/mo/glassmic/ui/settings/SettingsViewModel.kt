@@ -208,6 +208,26 @@ class SettingsViewModel @Inject constructor(
         configStore.update { it.setExperimental(it.experimental.toBuilder().setLimiterEnabled(v)) }
     }
 
+    fun setReverbEnabled(v: Boolean) = viewModelScope.launch {
+        configStore.update { it.setExperimental(it.experimental.toBuilder().setReverbEnabled(v)) }
+    }
+
+    fun setReverbAmount(v: Float) = viewModelScope.launch {
+        configStore.update {
+            it.setExperimental(it.experimental.toBuilder().setReverbAmount(v.coerceIn(0f, 1f)))
+        }
+    }
+
+    fun setSpeedEnabled(v: Boolean) = viewModelScope.launch {
+        configStore.update { it.setExperimental(it.experimental.toBuilder().setSpeedEnabled(v)) }
+    }
+
+    fun setSpeedFactor(v: Float) = viewModelScope.launch {
+        configStore.update {
+            it.setExperimental(it.experimental.toBuilder().setSpeedFactor(v.coerceIn(0.5f, 2.0f)))
+        }
+    }
+
     // ============ 管线自检 + 统计 ============
     fun runPipelineProbe() {
         if (_probing.value) return

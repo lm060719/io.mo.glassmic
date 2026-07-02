@@ -88,7 +88,8 @@ fun HomeScreen(
                 state = state,
                 onToggle = vm::toggleMaster,
                 onTogglePause = vm::togglePause,
-                onSeek = vm::seekTo
+                onSeek = vm::seekTo,
+                onToggleFloating = vm::toggleFloating
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -103,7 +104,6 @@ fun HomeScreen(
                 clickable = true,
                 onClick = onOpenScope
             )
-            InfoRow(label = stringResource(R.string.home_field_floating), value = state.floatingLabel)
             HookStatusRow(
                 label = stringResource(R.string.home_field_hook),
                 activity = state.hookActivity,
@@ -133,12 +133,6 @@ fun HomeScreen(
                 ) { Text(stringResource(R.string.home_pick_audio)) }
 
                 OutlinedButton(
-                    onClick = vm::toggleFloating,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(16.dp)
-                ) { Text(stringResource(R.string.home_open_floating)) }
-
-                OutlinedButton(
                     onClick = vm::restoreRealMic,
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(16.dp)
@@ -153,7 +147,8 @@ private fun StatusHeroCard(
     state: HomeUiState,
     onToggle: (Boolean) -> Unit,
     onTogglePause: () -> Unit,
-    onSeek: (Long) -> Unit
+    onSeek: (Long) -> Unit,
+    onToggleFloating: () -> Unit
 ) {
     GlassSurface(
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -188,6 +183,21 @@ private fun StatusHeroCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 打开悬浮窗开关
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.home_open_floating),
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = state.floatingWindowVisible,
+                    onCheckedChange = { onToggleFloating() }
+                )
+            }
 
             if (state.hasFileSource) {
                 Spacer(modifier = Modifier.height(12.dp))

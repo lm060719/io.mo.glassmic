@@ -173,6 +173,12 @@
     <string name="settings_exp_noise">噪声环境模拟</string>
     <string name="settings_exp_limiter">自动限幅保护</string>
     <string name="settings_exp_limiter_hint">关闭可能导致削波，强烈建议保留</string>
+    <string name="settings_exp_reverb">混响</string>
+    <string name="settings_exp_reverb_hint">为音源叠加空间回声</string>
+    <string name="settings_exp_reverb_amount">混响强度</string>
+    <string name="settings_exp_speed">变速</string>
+    <string name="settings_exp_speed_hint">改变播放速度</string>
+    <string name="settings_exp_speed_factor">播放速度</string>
 
     <string name="settings_section_about">关于</string>
     <string name="settings_about_version">版本</string>

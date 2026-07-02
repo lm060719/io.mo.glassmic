@@ -95,4 +95,8 @@ message Experimental {
   bool high_gain = 3;
   bool noise_sim = 4;
   bool limiter_enabled = 5;  // 默认 true，保护开关
+  bool reverb_enabled = 6;
+  float reverb_amount = 7;   // 0.0 - 1.0，混响强度
+  bool speed_enabled = 8;
+  float speed_factor = 9;    // 0.5 - 2.0，变速倍率（变速变调），0 视为 1.0
 }

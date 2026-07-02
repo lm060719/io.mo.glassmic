@@ -218,6 +218,38 @@ fun SettingsScreen(
                         checked = cfg.experimental.limiterEnabled,
                         onChange = vm::setLimiter
                     )
+                    SwitchRow(
+                        label = stringResource(R.string.settings_exp_reverb),
+                        hint = stringResource(R.string.settings_exp_reverb_hint),
+                        checked = cfg.experimental.reverbEnabled,
+                        onChange = vm::setReverbEnabled
+                    )
+                    if (cfg.experimental.reverbEnabled) {
+                        val amount = cfg.experimental.reverbAmount.takeIf { it > 0f } ?: 0.5f
+                        LabeledSlider(
+                            label = stringResource(R.string.settings_exp_reverb_amount),
+                            value = amount,
+                            valueRange = 0f..1f,
+                            display = "%.0f%%".format(amount * 100),
+                            onChange = vm::setReverbAmount
+                        )
+                    }
+                    SwitchRow(
+                        label = stringResource(R.string.settings_exp_speed),
+                        hint = stringResource(R.string.settings_exp_speed_hint),
+                        checked = cfg.experimental.speedEnabled,
+                        onChange = vm::setSpeedEnabled
+                    )
+                    if (cfg.experimental.speedEnabled) {
+                        val factor = cfg.experimental.speedFactor.takeIf { it > 0f } ?: 1f
+                        LabeledSlider(
+                            label = stringResource(R.string.settings_exp_speed_factor),
+                            value = factor,
+                            valueRange = 0.5f..2.0f,
+                            display = "%.2fx".format(factor),
+                            onChange = vm::setSpeedFactor
+                        )
+                    }
                 }
             } }
 
@@ -391,6 +423,26 @@ private fun OpacitySlider(value: Float, onChange: (Float) -> Unit) {
             valueRange = 0.2f..1f,
             steps = 7
         )
+    }
+}
+
+// ============ 通用带标签滑块 ============
+@Composable
+private fun LabeledSlider(
+    label: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    display: String,
+    steps: Int = 0,
+    onChange: (Float) -> Unit
+) {
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, modifier = Modifier.weight(1f))
+            Text(display, style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+        }
+        Slider(value = value, onValueChange = onChange, valueRange = valueRange, steps = steps)
     }
 }
 

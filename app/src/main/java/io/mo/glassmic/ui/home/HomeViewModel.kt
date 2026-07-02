@@ -34,7 +34,7 @@ data class HomeUiState(
     val groupName: String = "—",
     val policyLabel: String = "循环",
     val scopeLabel: String = "全局",
-    val floatingLabel: String = "关闭",
+    val floatingWindowVisible: Boolean = false,
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val progress: Float = 0f,
@@ -98,7 +98,7 @@ class HomeViewModel @Inject constructor(
                 // BLACKLIST 已在 UI 上隐藏；旧配置统一按"全系统"展示
                 else -> "全系统"
             },
-            floatingLabel = if (rt.floatingWindowVisible) "开启" else "关闭",
+            floatingWindowVisible = rt.floatingWindowVisible,
             positionMs = rt.positionMs,
             durationMs = rt.durationMs,
             progress = if (rt.durationMs > 0) rt.positionMs.toFloat() / rt.durationMs else 0f,

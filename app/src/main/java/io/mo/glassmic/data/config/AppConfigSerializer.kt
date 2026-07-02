@@ -48,6 +48,8 @@ object AppConfigSerializer : Serializer<AppConfig> {
             Experimental.newBuilder()
                 .setUnlocked(false)        // 实验功能默认锁定
                 .setLimiterEnabled(true)   // 限幅保护默认开
+                .setReverbAmount(0.5f)     // 混响强度默认中等
+                .setSpeedFactor(1.0f)      // 变速默认原速
         )
         .build()
 
