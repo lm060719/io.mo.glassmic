@@ -1,6 +1,10 @@
 package io.mo.glassmic.ui.settings
 
+import android.app.StatusBarManager
+import android.content.ComponentName
 import android.content.Intent
+import android.graphics.drawable.Icon
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -41,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -57,6 +62,8 @@ import io.mo.glassmic.proto.FloatingSize
 import io.mo.glassmic.proto.LogLevel
 import io.mo.glassmic.proto.PlaybackPolicy
 import io.mo.glassmic.proto.ThemeMode
+import io.mo.glassmic.service.GlassTileService
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -70,6 +77,7 @@ fun SettingsScreen(
     val state by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(state.exportedUri) {
         val uri = state.exportedUri ?: return@LaunchedEffect
@@ -92,6 +100,26 @@ fun SettingsScreen(
     val iconPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) vm.setFloatingIcon(uri) }
+
+    // 请求把快捷设置磁贴添加到系统下拉面板（Android 13+）
+    val onAddTile: () -> Unit = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.getSystemService(StatusBarManager::class.java)?.requestAddTileService(
+                ComponentName(context, GlassTileService::class.java),
+                context.getString(R.string.tile_label),
+                Icon.createWithResource(context, R.drawable.ic_notification),
+                context.mainExecutor
+            ) { result ->
+                if (result == StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED ||
+                    result == StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED
+                ) {
+                    scope.launch {
+                        snackbar.showSnackbar(context.getString(R.string.settings_tile_added))
+                    }
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -117,6 +145,18 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                item { Section(stringResource(R.string.settings_section_tile)) {
+                    ActionRow(stringResource(R.string.settings_tile_add), onClick = onAddTile)
+                    Text(
+                        stringResource(R.string.settings_tile_add_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                } }
+            }
+
             item { Section(stringResource(R.string.settings_section_appearance)) {
                 ThemePicker(cfg.appearance.theme, vm::setTheme)
             } }
