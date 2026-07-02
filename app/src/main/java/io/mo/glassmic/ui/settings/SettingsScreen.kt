@@ -178,6 +178,22 @@ fun SettingsScreen(
                     onPick = { iconPickerLauncher.launch(arrayOf("image/*")) },
                     onReset = { vm.setFloatingIcon(null) }
                 )
+                SwitchRow(
+                    label = stringResource(R.string.settings_waveform_enabled),
+                    hint = stringResource(R.string.settings_waveform_enabled_hint),
+                    checked = cfg.floatingWindow.waveformEnabled,
+                    onChange = vm::setWaveformEnabled
+                )
+                if (cfg.floatingWindow.waveformEnabled) {
+                    val wfOpacity = cfg.floatingWindow.waveformOpacity.takeIf { it > 0f } ?: 0.6f
+                    LabeledSlider(
+                        label = stringResource(R.string.settings_waveform_opacity),
+                        value = wfOpacity,
+                        valueRange = 0.15f..1f,
+                        display = "%.0f%%".format(wfOpacity * 100),
+                        onChange = vm::setWaveformOpacity
+                    )
+                }
             } }
 
             item { Section(stringResource(R.string.settings_section_policy)) {

@@ -86,6 +86,11 @@
             android:name=".service.FloatingWindowService"
             android:exported="false" />
 
+        <!-- ============ 实时波形悬浮窗服务 ============ -->
+        <service
+            android:name=".service.WaveformOverlayService"
+            android:exported="false" />
+
         <!-- ============ 快捷设置磁贴（主开关） ============ -->
         <service
             android:name=".service.GlassTileService"

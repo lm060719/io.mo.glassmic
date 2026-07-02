@@ -32,6 +32,7 @@ object AppConfigSerializer : Serializer<AppConfig> {
                 .setDefaultMode(FloatingMode.PILL)
                 .setOpacity(0.85f)
                 .setSize(FloatingSize.STANDARD)
+                .setWaveformOpacity(0.6f)   // 波形悬浮窗默认半透明
         )
         .setAppearance(
             Appearance.newBuilder()

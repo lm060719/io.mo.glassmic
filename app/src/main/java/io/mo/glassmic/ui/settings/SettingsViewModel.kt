@@ -1,9 +1,12 @@
 package io.mo.glassmic.ui.settings
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import io.mo.glassmic.service.WaveformOverlayService
 import io.mo.glassmic.data.audio.FloatingIconStore
 import io.mo.glassmic.data.config.ConfigStore
 import io.mo.glassmic.data.diag.AudioPipelineProbe
@@ -50,6 +53,7 @@ data class SettingsUiState(
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val configStore: ConfigStore,
     private val floatingIconStore: FloatingIconStore,
     private val bundler: DiagnosticBundler,
@@ -150,6 +154,20 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun consumeIconError() { _iconError.value = null }
+
+    // ============ 实时波形悬浮窗 ============
+    fun setWaveformEnabled(enabled: Boolean) = viewModelScope.launch {
+        configStore.update {
+            it.setFloatingWindow(it.floatingWindow.toBuilder().setWaveformEnabled(enabled))
+        }
+        if (enabled) WaveformOverlayService.start(context) else WaveformOverlayService.stop(context)
+    }
+
+    fun setWaveformOpacity(opacity: Float) = viewModelScope.launch {
+        configStore.update {
+            it.setFloatingWindow(it.floatingWindow.toBuilder().setWaveformOpacity(opacity.coerceIn(0.15f, 1f)))
+        }
+    }
 
     // ============ 默认播放策略 ============
     fun setPolicy(policy: PlaybackPolicy) = viewModelScope.launch {

@@ -15,6 +15,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -78,7 +81,16 @@ class SharedPcmPublisher @Inject constructor(
         const val NOISE_SIM_AMPLITUDE = 6_000
         const val HIGH_GAIN_MULTIPLIER = 1.8f
         const val REVERB_DELAY_SAMPLES = 2_880   // 60ms @48k 单声道
+        const val WAVEFORM_POINTS_PER_FRAME = 24 // 每帧下采样出的波形振幅点数
     }
+
+    // 实时波形振幅点（0..1）。仅在有订阅者（波形悬浮窗打开）时计算并发送。
+    private val _waveform = MutableSharedFlow<FloatArray>(
+        replay = 0,
+        extraBufferCapacity = 4,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val waveform: SharedFlow<FloatArray> = _waveform.asSharedFlow()
 
     @Volatile private var currentSource: AudioSourceProvider = SilenceSource
     @Volatile private var writerStarted = false
@@ -278,7 +290,34 @@ class SharedPcmPublisher @Inject constructor(
                 detach(c.id)
             }
         }
+        // 波形窗打开时才计算振幅，避免无谓开销
+        if (_waveform.subscriptionCount.value > 0) {
+            _waveform.tryEmit(downsample(sourceData, WAVEFORM_POINTS_PER_FRAME))
+        }
         return sourceData.size
+    }
+
+    /** 把一帧 PCM16 下采样成 [points] 个峰值振幅点（0..1），供波形显示。 */
+    private fun downsample(pcm: ByteArray, points: Int): FloatArray {
+        val samples = pcm.size / 2
+        val out = FloatArray(points)
+        if (samples <= 0) return out
+        val per = (samples / points).coerceAtLeast(1)
+        for (p in 0 until points) {
+            val start = p * per
+            if (start >= samples) break
+            val end = minOf(start + per, samples)
+            var peak = 0
+            var i = start
+            while (i < end) {
+                val s = ((pcm[i * 2 + 1].toInt() shl 8) or (pcm[i * 2].toInt() and 0xFF)).toShort().toInt()
+                val a = if (s < 0) -s else s
+                if (a > peak) peak = a
+                i++
+            }
+            out[p] = (peak / 32768f).coerceIn(0f, 1f)
+        }
+        return out
     }
 
     private fun applyEffects(input: ByteArray): ByteArray {

@@ -52,6 +52,8 @@ message FloatingWindow {
   FloatingSize size = 4;
   // 自定义悬浮球图标相对路径（filesDir/floating/ 下），空则用默认图标
   string custom_icon_path = 5;
+  bool waveform_enabled = 6;   // 实时波形悬浮窗开关
+  float waveform_opacity = 7;  // 0.0 - 1.0，波形悬浮窗透明度，0 视为默认
 }
 
 enum FloatingMode {

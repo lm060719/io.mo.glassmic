@@ -141,6 +141,9 @@
     <string name="settings_floating_icon_pick">选择图片</string>
     <string name="settings_floating_icon_reset">恢复默认</string>
     <string name="settings_floating_icon_error">图标导入失败</string>
+    <string name="settings_waveform_enabled">实时波形显示</string>
+    <string name="settings_waveform_enabled_hint">开启后弹出独立的实时波形悬浮窗</string>
+    <string name="settings_waveform_opacity">波形透明度</string>
 
     <string name="settings_section_policy">默认播放策略</string>
     <string name="settings_policy_hint">片段组未单独设置时使用</string>
