@@ -10,6 +10,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.roundToInt
 
 /**
  * Decodes an imported audio file to signed 16-bit little-endian PCM and converts it to the
@@ -42,9 +43,11 @@ class FileAudioSource(
     private var pendingFrameOffset = 0
     private var pendingFrameCount = 0
 
-    private var currentFrame = ShortArray(sourceChannels)
-    private var hasCurrentFrame = false
-    private var sourceCursor = 0.0
+    // 线性插值重采样：curFrame/nextFrame 为相邻两个源帧，frac 是它们之间的相位 [0,1)。
+    private var curFrame: ShortArray? = null
+    private var nextFrame: ShortArray? = null
+    private var frac = 0.0
+    private var resampleScratch = ShortArray(sourceChannels)
     private var lastTargetSampleRate = 0
     private var lastTargetChannels = 0
     private var generatedTargetFrames = 0L
@@ -86,7 +89,7 @@ class FileAudioSource(
         if (written > 0) {
             positionUs = generatedTargetFrames * 1_000_000L / targetSampleRate
             written
-        } else if (outputDone && !hasCurrentFrame && pendingFrameOffset >= pendingFrameCount) {
+        } else if (outputDone && curFrame == null && pendingFrameOffset >= pendingFrameCount) {
             -1
         } else {
             0
@@ -94,24 +97,43 @@ class FileAudioSource(
     }
 
     private fun nextResampledFrame(targetSampleRate: Int): ShortArray? {
-        if (!hasCurrentFrame) {
-            currentFrame = readSourceFrame() ?: return null
-            hasCurrentFrame = true
-            sourceCursor = 0.0
+        val cur = curFrame ?: readSourceFrame()?.also {
+            curFrame = it
+            frac = 0.0
+        } ?: return null
+
+        var next = nextFrame ?: readSourceFrame()?.also { nextFrame = it }
+        if (next == null) {
+            // 没有右端点：文件末尾按零阶保持吐出末帧一次后结束；否则解码暂未就绪，等下次调用。
+            if (!outputDone) return null
+            val tail = lerpFrame(cur, cur, 0.0)
+            curFrame = null
+            return tail
         }
 
-        val out = currentFrame
-        sourceCursor += sourceSampleRate.toDouble() / targetSampleRate.toDouble()
-        while (sourceCursor >= 1.0) {
-            val next = readSourceFrame()
-            if (next == null) {
-                if (outputDone) hasCurrentFrame = false
-                break
-            }
-            currentFrame = next
-            sourceCursor -= 1.0
+        val out = lerpFrame(cur, next, frac)
+        frac += sourceSampleRate.toDouble() / targetSampleRate.toDouble()
+        while (frac >= 1.0) {
+            curFrame = nextFrame
+            next = readSourceFrame()
+            nextFrame = next
+            frac -= 1.0
+            if (next == null) break // 末尾或暂时缺数据，交给下次调用重取右端点
         }
         return out
+    }
+
+    /** 在两个源帧之间按相位 [t] (0..1) 线性插值，写入可复用的 scratch 后返回。 */
+    private fun lerpFrame(a: ShortArray, b: ShortArray, t: Double): ShortArray {
+        if (resampleScratch.size != sourceChannels) resampleScratch = ShortArray(sourceChannels)
+        val scratch = resampleScratch
+        for (i in 0 until sourceChannels) {
+            val av = a.getOrElse(i) { 0 }.toInt()
+            val bv = b.getOrElse(i) { 0 }.toInt()
+            scratch[i] = (av + (bv - av) * t).roundToInt()
+                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+        }
+        return scratch
     }
 
     private fun readSourceFrame(): ShortArray? {
@@ -143,7 +165,10 @@ class FileAudioSource(
                     sourceSampleRate = fmt.getIntegerOrDefault(MediaFormat.KEY_SAMPLE_RATE, sourceSampleRate)
                     sourceChannels = fmt.getIntegerOrDefault(MediaFormat.KEY_CHANNEL_COUNT, sourceChannels)
                     pcmEncoding = fmt.getIntegerOrDefault("pcm-encoding", PCM_ENCODING_16BIT)
-                    currentFrame = ShortArray(sourceChannels)
+                    // 声道数可能随格式变化，丢弃已缓存的相邻帧以按新维度重取。
+                    curFrame = null
+                    nextFrame = null
+                    resampleScratch = ShortArray(sourceChannels)
                 }
                 else -> {
                     if (outIdx < 0) return false
@@ -220,8 +245,9 @@ class FileAudioSource(
     private fun resetResampler(targetSampleRate: Int, targetChannels: Int) {
         lastTargetSampleRate = targetSampleRate
         lastTargetChannels = targetChannels
-        sourceCursor = 0.0
-        hasCurrentFrame = false
+        frac = 0.0
+        curFrame = null
+        nextFrame = null
         generatedTargetFrames = positionUs * targetSampleRate / 1_000_000L
     }
 
@@ -238,8 +264,9 @@ class FileAudioSource(
             pendingSamples = ShortArray(0)
             pendingFrameOffset = 0
             pendingFrameCount = 0
-            sourceCursor = 0.0
-            hasCurrentFrame = false
+            frac = 0.0
+            curFrame = null
+            nextFrame = null
             generatedTargetFrames = 0L
         }.onFailure { GlassLog.b("FileAudio") { "reset failed: ${it.message}" } }
     }
@@ -255,8 +282,9 @@ class FileAudioSource(
             pendingSamples = ShortArray(0)
             pendingFrameOffset = 0
             pendingFrameCount = 0
-            sourceCursor = 0.0
-            hasCurrentFrame = false
+            frac = 0.0
+            curFrame = null
+            nextFrame = null
             generatedTargetFrames = positionUs * (lastTargetSampleRate.takeIf { it > 0 } ?: 48_000) / 1_000_000L
         }.onFailure { GlassLog.b("FileAudio") { "seekTo failed: ${it.message}" } }
     }

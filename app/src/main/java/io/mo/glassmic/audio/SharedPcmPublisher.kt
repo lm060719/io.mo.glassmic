@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /**
@@ -445,26 +446,33 @@ private class Pcm16Converter(
     private val targetSampleRate: Int,
     private val targetChannels: Int
 ) {
-    private var pending = ShortArray(0)
+    private val ring = ShortRingBuffer()
     private var sourcePosition = 0.0
+    private val passthrough =
+        sourceSampleRate == targetSampleRate && sourceChannels == targetChannels
+    private val step = sourceSampleRate.toDouble() / targetSampleRate.toDouble()
 
     fun convert(bytes: ByteArray): ByteArray {
-        if (sourceSampleRate == targetSampleRate && sourceChannels == targetChannels) {
-            return bytes
-        }
+        if (passthrough) return bytes
 
         append(bytes)
-        if (pending.isEmpty()) return ByteArray(0)
+        val frameCount = ring.size / sourceChannels
+        // 线性插值需要 floor 与 floor+1 两帧，至少要有 2 帧才能产出。
+        if (frameCount < 2) return ByteArray(0)
 
-        val step = sourceSampleRate.toDouble() / targetSampleRate.toDouble()
-        val frames = ArrayList<ShortArray>(pending.size / sourceChannels)
-        while (sourcePosition < frameCount()) {
-            val sourceFrame = sourcePosition.toInt()
-            frames += mixFrame(sourceFrame)
+        val frames = ArrayList<ShortArray>(((frameCount - sourcePosition) / step).toInt().coerceAtLeast(0))
+        while (sourcePosition + 1.0 < frameCount) {
+            frames += interpolatedFrame(sourcePosition)
             sourcePosition += step
         }
 
-        trimConsumedSourceFrames()
+        // 保留当前 floor 帧作为下次插值的左端点，仅丢弃已彻底越过的源帧。
+        val consumed = sourcePosition.toInt()
+        if (consumed > 0) {
+            ring.discard(consumed * sourceChannels)
+            sourcePosition -= consumed
+        }
+
         if (frames.isEmpty()) return ByteArray(0)
 
         val out = ByteArray(frames.size * targetChannels * 2)
@@ -482,44 +490,40 @@ private class Pcm16Converter(
         val samplesToAdd = bytes.size / 2
         if (samplesToAdd <= 0) return
 
-        val combined = ShortArray(pending.size + samplesToAdd)
-        pending.copyInto(combined)
+        val decoded = ShortArray(samplesToAdd)
         var src = 0
-        var dst = pending.size
+        var dst = 0
         while (src + 1 < bytes.size) {
             val lo = bytes[src].toInt() and 0xFF
             val hi = bytes[src + 1].toInt()
-            combined[dst++] = ((hi shl 8) or lo).toShort()
+            decoded[dst++] = ((hi shl 8) or lo).toShort()
             src += 2
         }
-        pending = combined
+        ring.append(decoded, 0, dst)
     }
 
-    private fun frameCount(): Int = pending.size / sourceChannels
+    private fun sample(index: Int): Int = if (index < ring.size) ring[index].toInt() else 0
 
-    private fun mixFrame(frameIndex: Int): ShortArray {
-        val base = frameIndex * sourceChannels
+    private fun lerp(a: Int, b: Int, frac: Double): Short =
+        (a + (b - a) * frac).roundToInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+
+    private fun interpolatedFrame(position: Double): ShortArray {
+        val i0 = position.toInt()
+        val frac = position - i0
+        val base0 = i0 * sourceChannels
+        val base1 = (i0 + 1) * sourceChannels
         return ShortArray(targetChannels) { channel ->
             when {
-                sourceChannels == 1 -> pending.getOrElse(base) { 0 }
+                sourceChannels == 1 -> lerp(sample(base0), sample(base1), frac)
                 targetChannels == 1 -> {
-                    val left = pending.getOrElse(base) { 0 }.toInt()
-                    val right = pending.getOrElse(base + 1) { 0 }.toInt()
+                    val left = lerp(sample(base0), sample(base1), frac).toInt()
+                    val right = lerp(sample(base0 + 1), sample(base1 + 1), frac).toInt()
                     ((left + right) / 2).toShort()
                 }
-                channel < sourceChannels -> pending.getOrElse(base + channel) { 0 }
+                channel < sourceChannels ->
+                    lerp(sample(base0 + channel), sample(base1 + channel), frac)
                 else -> 0
             }
         }
-    }
-
-    private fun trimConsumedSourceFrames() {
-        val frames = frameCount()
-        val consumed = sourcePosition.toInt().coerceAtMost(frames)
-        if (consumed <= 0) return
-
-        val consumedSamples = consumed * sourceChannels
-        pending = pending.copyOfRange(consumedSamples, pending.size)
-        sourcePosition -= consumed
     }
 }
