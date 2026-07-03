@@ -5,19 +5,19 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import io.mo.glassmic.core.model.AudioClip
 import io.mo.glassmic.core.model.SourceType
+import io.mo.glassmic.core.util.Pcm16
 import io.mo.glassmic.log.GlassLog
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.roundToInt
 
 /**
  * Decodes an imported audio file to signed 16-bit little-endian PCM and converts it to the
  * requested sample rate/channel layout. The conversion is intentionally small and dependency-free:
- * nearest-frame resampling plus channel mix/copy. That is enough to keep voice-recording clients
- * such as WeChat on the correct clock even when they request 16 kHz while the imported file is
- * 44.1/48 kHz.
+ * linear-interpolation resampling plus channel mix/copy. That is enough to keep voice-recording
+ * clients such as WeChat on the correct clock even when they request 16 kHz while the imported
+ * file is 44.1/48 kHz.
  */
 class FileAudioSource(
     private val clip: AudioClip,
@@ -97,29 +97,39 @@ class FileAudioSource(
     }
 
     private fun nextResampledFrame(targetSampleRate: Int): ShortArray? {
-        val cur = curFrame ?: readSourceFrame()?.also {
-            curFrame = it
+        // 左端点。整个流首次无数据时返回 null（read() 会回 0 等待解码）。
+        if (curFrame == null) {
+            curFrame = readSourceFrame() ?: return null
             frac = 0.0
-        } ?: return null
-
-        var next = nextFrame ?: readSourceFrame()?.also { nextFrame = it }
-        if (next == null) {
-            // 没有右端点：文件末尾按零阶保持吐出末帧一次后结束；否则解码暂未就绪，等下次调用。
-            if (!outputDone) return null
-            val tail = lerpFrame(cur, cur, 0.0)
-            curFrame = null
-            return tail
+            nextFrame = null
         }
 
-        val out = lerpFrame(cur, next, frac)
-        frac += sourceSampleRate.toDouble() / targetSampleRate.toDouble()
+        // 先把相位归一化到 [0,1) 再插值——绝不能带着 frac >= 1.0 去 lerp，否则会外插出越界样本。
+        // 推进沿 left <- right 移位消费源帧，保证不跳帧。
         while (frac >= 1.0) {
-            curFrame = nextFrame
-            next = readSourceFrame()
-            nextFrame = next
+            if (nextFrame == null) nextFrame = readSourceFrame()
+            val successor = nextFrame
+            if (successor == null) {
+                // 需要推进却取不到后继帧。
+                if (outputDone) { curFrame = null; return null } // 流已结束
+                return lerpFrame(curFrame!!, curFrame!!, 0.0)     // 解码暂时欠载：零阶保持，保留相位待下次追上
+            }
+            curFrame = successor
+            nextFrame = readSourceFrame()
             frac -= 1.0
-            if (next == null) break // 末尾或暂时缺数据，交给下次调用重取右端点
         }
+
+        val left = curFrame!!
+        if (nextFrame == null) nextFrame = readSourceFrame()
+        val right = nextFrame
+        if (right == null) {
+            // 无右端点：文件末尾吐出末帧一次后结束；否则解码欠载，零阶保持避免消费端断流。
+            if (outputDone) curFrame = null
+            return lerpFrame(left, left, 0.0)
+        }
+
+        val out = lerpFrame(left, right, frac)
+        frac += sourceSampleRate.toDouble() / targetSampleRate.toDouble()
         return out
     }
 
@@ -128,10 +138,7 @@ class FileAudioSource(
         if (resampleScratch.size != sourceChannels) resampleScratch = ShortArray(sourceChannels)
         val scratch = resampleScratch
         for (i in 0 until sourceChannels) {
-            val av = a.getOrElse(i) { 0 }.toInt()
-            val bv = b.getOrElse(i) { 0 }.toInt()
-            scratch[i] = (av + (bv - av) * t).roundToInt()
-                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
+            scratch[i] = Pcm16.lerp(a.getOrElse(i) { 0 }.toInt(), b.getOrElse(i) { 0 }.toInt(), t)
         }
         return scratch
     }
@@ -165,9 +172,10 @@ class FileAudioSource(
                     sourceSampleRate = fmt.getIntegerOrDefault(MediaFormat.KEY_SAMPLE_RATE, sourceSampleRate)
                     sourceChannels = fmt.getIntegerOrDefault(MediaFormat.KEY_CHANNEL_COUNT, sourceChannels)
                     pcmEncoding = fmt.getIntegerOrDefault("pcm-encoding", PCM_ENCODING_16BIT)
-                    // 声道数可能随格式变化，丢弃已缓存的相邻帧以按新维度重取。
-                    curFrame = null
-                    nextFrame = null
+                    // 声道数可能随格式变化，只重建 scratch。不要在此清空 curFrame/nextFrame：
+                    // 本函数是从 nextResampledFrame 深层调用的，置空会与调用点的重新赋值竞态、
+                    // 导致帧序颠倒甚至 NPE。旧维度的残留帧会在相位推进中被新帧自然替换，
+                    // lerpFrame 的 getOrElse 兜底可安全跨越这一两帧的声道数过渡。
                     resampleScratch = ShortArray(sourceChannels)
                 }
                 else -> {

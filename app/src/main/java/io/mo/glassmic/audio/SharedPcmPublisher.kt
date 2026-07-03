@@ -5,6 +5,8 @@ import android.os.ParcelFileDescriptor
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.mo.glassmic.core.model.PlaybackPolicy
 import io.mo.glassmic.core.model.SourceType
+import io.mo.glassmic.core.util.Pcm16
+import io.mo.glassmic.core.util.ShortRingBuffer
 import io.mo.glassmic.data.config.ConfigStore
 import io.mo.glassmic.data.runtime.RuntimeStateHolder
 import io.mo.glassmic.log.GlassLog
@@ -28,7 +30,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /**
@@ -361,11 +362,10 @@ class SharedPcmPublisher @Inject constructor(
         while (j < outSamples) {
             val srcPos = j * speed
             val i0 = srcPos.toInt()
-            val frac = srcPos - i0
+            val frac = (srcPos - i0).toDouble()
             val s0 = sampleAt(input, i0, inSamples)
             val s1 = sampleAt(input, i0 + 1, inSamples)
-            val v = (s0 + (s1 - s0) * frac).toInt()
-                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+            val v = Pcm16.lerp(s0, s1, frac).toInt()
             out[j * 2] = (v and 0xFF).toByte()
             out[j * 2 + 1] = ((v ushr 8) and 0xFF).toByte()
             j++
@@ -373,9 +373,9 @@ class SharedPcmPublisher @Inject constructor(
         return out
     }
 
-    private fun sampleAt(b: ByteArray, idx: Int, total: Int): Float {
+    private fun sampleAt(b: ByteArray, idx: Int, total: Int): Int {
         val i = idx.coerceIn(0, total - 1)
-        return (((b[i * 2 + 1].toInt() shl 8) or (b[i * 2].toInt() and 0xFF)).toShort()).toFloat()
+        return ((b[i * 2 + 1].toInt() shl 8) or (b[i * 2].toInt() and 0xFF)).toShort().toInt()
     }
 
     private fun startConsumerWriter(consumer: Consumer) {
@@ -447,6 +447,7 @@ private class Pcm16Converter(
     private val targetChannels: Int
 ) {
     private val ring = ShortRingBuffer()
+    private var decodeScratch = ShortArray(0)
     private var sourcePosition = 0.0
     private val passthrough =
         sourceSampleRate == targetSampleRate && sourceChannels == targetChannels
@@ -460,70 +461,65 @@ private class Pcm16Converter(
         // 线性插值需要 floor 与 floor+1 两帧，至少要有 2 帧才能产出。
         if (frameCount < 2) return ByteArray(0)
 
-        val frames = ArrayList<ShortArray>(((frameCount - sourcePosition) / step).toInt().coerceAtLeast(0))
-        while (sourcePosition + 1.0 < frameCount) {
-            frames += interpolatedFrame(sourcePosition)
+        // 输出帧数上界可预先算出，逐样本直写一次性分配的输出缓冲，热路径零中间分配
+        val maxFrames = ((frameCount - 1 - sourcePosition) / step).toInt() + 1
+        val out = ByteArray(maxFrames * targetChannels * 2)
+        var offset = 0
+        while (offset < out.size && sourcePosition + 1.0 < frameCount) {
+            offset = writeInterpolatedFrame(out, offset, sourcePosition)
             sourcePosition += step
         }
 
         // 保留当前 floor 帧作为下次插值的左端点，仅丢弃已彻底越过的源帧。
-        val consumed = sourcePosition.toInt()
+        // consumed 必须与实际丢弃量一致地截断，否则相位时钟与缓冲失同步，
+        // 每块会回放一个源帧（等效输出时钟偏快，消费端持续积压）。
+        val consumed = sourcePosition.toInt().coerceAtMost(frameCount)
         if (consumed > 0) {
             ring.discard(consumed * sourceChannels)
             sourcePosition -= consumed
         }
 
-        if (frames.isEmpty()) return ByteArray(0)
-
-        val out = ByteArray(frames.size * targetChannels * 2)
-        var offset = 0
-        frames.forEach { frame ->
-            frame.forEach { sample ->
-                out[offset++] = (sample.toInt() and 0xFF).toByte()
-                out[offset++] = ((sample.toInt() ushr 8) and 0xFF).toByte()
-            }
-        }
-        return out
+        return if (offset == out.size) out else out.copyOf(offset)
     }
 
     private fun append(bytes: ByteArray) {
         val samplesToAdd = bytes.size / 2
         if (samplesToAdd <= 0) return
 
-        val decoded = ShortArray(samplesToAdd)
+        if (decodeScratch.size < samplesToAdd) decodeScratch = ShortArray(samplesToAdd)
         var src = 0
         var dst = 0
         while (src + 1 < bytes.size) {
             val lo = bytes[src].toInt() and 0xFF
             val hi = bytes[src + 1].toInt()
-            decoded[dst++] = ((hi shl 8) or lo).toShort()
+            decodeScratch[dst++] = ((hi shl 8) or lo).toShort()
             src += 2
         }
-        ring.append(decoded, 0, dst)
+        ring.append(decodeScratch, 0, dst)
     }
 
-    private fun sample(index: Int): Int = if (index < ring.size) ring[index].toInt() else 0
-
-    private fun lerp(a: Int, b: Int, frac: Double): Short =
-        (a + (b - a) * frac).roundToInt().coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()).toShort()
-
-    private fun interpolatedFrame(position: Double): ShortArray {
+    private fun writeInterpolatedFrame(out: ByteArray, offset: Int, position: Double): Int {
         val i0 = position.toInt()
         val frac = position - i0
         val base0 = i0 * sourceChannels
-        val base1 = (i0 + 1) * sourceChannels
-        return ShortArray(targetChannels) { channel ->
-            when {
-                sourceChannels == 1 -> lerp(sample(base0), sample(base1), frac)
+        val base1 = base0 + sourceChannels
+        var o = offset
+        for (channel in 0 until targetChannels) {
+            val sample: Int = when {
+                sourceChannels == 1 ->
+                    Pcm16.lerp(ring[base0].toInt(), ring[base1].toInt(), frac).toInt()
                 targetChannels == 1 -> {
-                    val left = lerp(sample(base0), sample(base1), frac).toInt()
-                    val right = lerp(sample(base0 + 1), sample(base1 + 1), frac).toInt()
-                    ((left + right) / 2).toShort()
+                    val left = Pcm16.lerp(ring[base0].toInt(), ring[base1].toInt(), frac).toInt()
+                    val right = Pcm16.lerp(ring[base0 + 1].toInt(), ring[base1 + 1].toInt(), frac).toInt()
+                    (left + right) / 2
                 }
                 channel < sourceChannels ->
-                    lerp(sample(base0 + channel), sample(base1 + channel), frac)
+                    Pcm16.lerp(ring[base0 + channel].toInt(), ring[base1 + channel].toInt(), frac).toInt()
                 else -> 0
             }
+            out[o++] = (sample and 0xFF).toByte()
+            out[o++] = ((sample ushr 8) and 0xFF).toByte()
         }
+        return o
     }
 }
