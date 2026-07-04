@@ -23,6 +23,21 @@ GlassMic is an open-source virtual microphone and audio pipeline testing module 
 - Per-consumer sample-rate/channel conversion for clients such as WeChat and system recorders.
 - Diagnostics, logs, hook status, and interception statistics.
 - Optional experimental audio effects such as high gain and stronger noise simulation.
+- Text-to-speech (TTS): type text and feed synthesized speech into the target app — handy for testing voice recognition / voice input without preparing audio files.
+- Two-step TTS flow: generate first, then play (replayable).
+- Offline system TTS out of the box, plus optional online AI TTS with OpenAI, Google Gemini, and Xiaomi MiMo protocols, custom endpoint URL and model, model listing, connection test, and audition.
+- MiMo preset voices, voice design (describe a voice in text), and voice cloning from a short reference audio sample (≤30 s / ≤2 MB).
+
+## Text-to-Speech (TTS)
+
+Open the floating window's menu and tap "🗣 Text-to-Speech". Type your text, tap **Generate** to synthesize, then tap **Play** to feed the audio into whatever app is recording. Play is repeatable, so you can re-feed the same clip without regenerating.
+
+- **System TTS** works fully offline with no configuration.
+- **AI TTS** (Settings → AI Provider (TTS)) enables online synthesis with a custom endpoint URL and model, and supports three protocols:
+  - **OpenAI** — `/audio/speech`
+  - **Google Gemini** — `generateContent` with the AUDIO modality
+  - **Xiaomi MiMo** — `chat/completions`, including preset voices, voice design (describe a voice in text), and voice cloning from a reference audio sample (≤30 s / ≤2 MB)
+- Fetch the available model list from the provider, run a connection test, and audition the result (generate, then play through the speaker) before feeding it to an app.
 
 ## Requirements
 
