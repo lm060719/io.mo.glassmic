@@ -25,14 +25,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -47,10 +43,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -62,7 +56,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import io.mo.glassmic.BuildConfig
 import io.mo.glassmic.R
 import io.mo.glassmic.data.diag.AudioPipelineProbe
-import io.mo.glassmic.data.runtime.HookActivity
 import io.mo.glassmic.proto.FloatingSize
 import io.mo.glassmic.proto.LogLevel
 import io.mo.glassmic.proto.PlaybackPolicy
@@ -70,14 +63,12 @@ import io.mo.glassmic.proto.ThemeMode
 import io.mo.glassmic.proto.TtsProvider
 import io.mo.glassmic.service.GlassTileService
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onOpenAiTts: () -> Unit,
     vm: SettingsViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsState()
@@ -106,9 +97,6 @@ fun SettingsScreen(
     val iconPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) vm.setFloatingIcon(uri) }
-    val ttsSampleLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri -> if (uri != null) vm.setTtsAiCloneSample(uri) }
 
     // 请求把快捷设置磁贴添加到系统下拉面板（Android 13+）
     val onAddTile: () -> Unit = {
@@ -220,22 +208,6 @@ fun SettingsScreen(
                     cfg.playbackPolicy == PlaybackPolicy.REAL_MIC) { vm.setPolicy(PlaybackPolicy.REAL_MIC) }
             } }
 
-            item { Section(stringResource(R.string.settings_section_hook)) {
-                HookCard(state.hook.activity, state.hook.lastPingMs, state.hook.lastPackage, state.hook.api)
-            } }
-
-            item { Section(stringResource(R.string.settings_section_intercept)) {
-                InterceptStatsCard(
-                    reads = state.interceptReads,
-                    bytes = state.interceptBytes,
-                    lastMs = state.interceptLastMs,
-                    lastPkg = state.interceptLastPkg,
-                    sampleRate = state.interceptLastSr,
-                    channels = state.interceptLastCh
-                )
-                ActionRow(stringResource(R.string.settings_intercept_reset), onClick = vm::resetInterceptStats)
-            } }
-
             item { Section(stringResource(R.string.settings_section_diag)) {
                 LogLevelPicker(cfg.logging.level, vm::setLogLevel)
                 ActionRow(stringResource(R.string.settings_pipeline_probe),
@@ -318,49 +290,12 @@ fun SettingsScreen(
                 }
             } }
 
-            item { Section("AI 供应商（TTS）") {
-                Text(
-                    "为悬浮窗「文字转语音」配置在线 AI 合成。开启后优先走 AI，否则回退系统 TTS；" +
-                        "endpoint / model 留空则按所选协议用官方默认。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            item { Section("语音合成") {
+                NavRow(
+                    title = "AI 供应商（TTS）",
+                    subtitle = if (cfg.tts.ai.enabled) "已启用 · ${providerLabel(cfg.tts.ai.provider)}" else "使用系统 TTS（点击配置在线 AI）",
+                    onClick = onOpenAiTts
                 )
-                SwitchRow(
-                    label = "启用 AI TTS",
-                    checked = cfg.tts.ai.enabled,
-                    onChange = vm::setTtsAiEnabled
-                )
-                TtsProviderPicker(cfg.tts.ai.provider, vm::setTtsAiProvider)
-                ConfigTextField("自定义地址 endpoint（留空用官方默认）", cfg.tts.ai.endpoint, vm::setTtsAiEndpoint)
-                ConfigTextField("API Key", cfg.tts.ai.apiKey, vm::setTtsAiApiKey)
-                ConfigTextField("自定义模型 model（留空用默认）", cfg.tts.ai.model, vm::setTtsAiModel)
-                TtsModelPickerRow(
-                    state = vm.ttsModels.collectAsState().value,
-                    onFetch = vm::fetchTtsModels,
-                    onPick = vm::setTtsAiModel
-                )
-                ConfigTextField("音色 voice（preset / OpenAI / Gemini）", cfg.tts.ai.voice, vm::setTtsAiVoice)
-                if (cfg.tts.ai.provider == TtsProvider.MIMO) {
-                    Text(
-                        "MiMo 进阶：模型填 -voicedesign 用文本描述定制音色（写在下方描述框）；" +
-                            "填 -voiceclone 复刻音色（选一段参考音频）。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                    )
-                    ConfigTextField(
-                        "音色描述 / 风格（voicedesign 必填，preset 可选）",
-                        cfg.tts.ai.stylePrompt, vm::setTtsAiStylePrompt
-                    )
-                    TtsCloneSampleRow(
-                        hasSample = cfg.tts.ai.cloneSamplePath.isNotBlank(),
-                        onPick = { ttsSampleLauncher.launch(arrayOf("audio/*")) },
-                        onClear = { vm.setTtsAiCloneSample(null) }
-                    )
-                }
-                ConfigTextField("返回格式 format（OpenAI：wav / pcm）", cfg.tts.ai.format, vm::setTtsAiFormat)
-                TtsTestRow(vm.ttsTest.collectAsState().value, onTest = vm::testTtsConnection)
             } }
 
             item { Section(stringResource(R.string.settings_section_about)) {
@@ -375,9 +310,9 @@ fun SettingsScreen(
     }
 }
 
-// ============ 基础组件 ============
+// ============ 基础组件（部分供 AiTtsSettingsScreen 复用） ============
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
+internal fun Section(title: String, content: @Composable () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -402,7 +337,7 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SwitchRow(
+internal fun SwitchRow(
     label: String,
     hint: String? = null,
     checked: Boolean,
@@ -450,127 +385,30 @@ private fun ActionRow(label: String, busy: Boolean = false, onClick: () -> Unit)
 }
 
 @Composable
-private fun TtsProviderPicker(current: TtsProvider, onSelect: (TtsProvider) -> Unit) {
-    val effective = if (current == TtsProvider.UNRECOGNIZED) TtsProvider.OPENAI else current
-    Column {
-        Text(
-            "接口协议",
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
-        )
-        PolicyOption("OpenAI（/audio/speech）", effective == TtsProvider.OPENAI) { onSelect(TtsProvider.OPENAI) }
-        PolicyOption("Google Gemini（generateContent）", effective == TtsProvider.GEMINI) { onSelect(TtsProvider.GEMINI) }
-        PolicyOption("小米 MiMo（chat/completions）", effective == TtsProvider.MIMO) { onSelect(TtsProvider.MIMO) }
-    }
-}
-
-@Composable
-private fun TtsCloneSampleRow(hasSample: Boolean, onPick: () -> Unit, onClear: () -> Unit) {
+private fun NavRow(title: String, subtitle: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text("参考音频（voiceclone）", style = MaterialTheme.typography.bodyLarge)
+            Text(title, style = MaterialTheme.typography.bodyLarge)
             Text(
-                if (hasSample) "已选择样本（wav / mp3）" else "未选择——复刻音色需先选一段音频样本",
-                style = MaterialTheme.typography.bodySmall,
+                subtitle, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )
         }
-        if (hasSample) {
-            TextButton(onClick = onClear) { Text("清除") }
-        }
-        TextButton(onClick = onPick) { Text("选择音频") }
+        Text("›", style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f))
     }
 }
 
-@Composable
-private fun TtsModelPickerRow(
-    state: TtsModelsState,
-    onFetch: () -> Unit,
-    onPick: (String) -> Unit,
-) {
-    var open by remember { mutableStateOf(false) }
-    val loading = state is TtsModelsState.Loading
-    // 拉取成功后自动展开下拉
-    LaunchedEffect(state) { if (state is TtsModelsState.Loaded && state.models.isNotEmpty()) open = true }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box {
-            TextButton(onClick = onFetch, enabled = !loading) {
-                Text(if (loading) "获取中…" else "获取模型")
-            }
-            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                (state as? TtsModelsState.Loaded)?.models?.forEach { m ->
-                    DropdownMenuItem(text = { Text(m) }, onClick = { onPick(m); open = false })
-                }
-            }
-        }
-        Spacer(modifier = Modifier.width(8.dp))
-        when (state) {
-            is TtsModelsState.Error -> Text(
-                state.message,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color(0xFFE5484D),
-                modifier = Modifier.weight(1f)
-            )
-            is TtsModelsState.Loaded -> Text(
-                "共 ${state.models.size} 个，点此重选",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { open = true }
-            )
-            else -> {}
-        }
-    }
-}
-
-@Composable
-private fun TtsTestRow(state: TtsTestState, onTest: () -> Unit) {
-    val testing = state is TtsTestState.Testing
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        TextButton(onClick = onTest, enabled = !testing) {
-            Text(if (testing) "测试中…" else "测试连接")
-        }
-        Spacer(modifier = Modifier.width(8.dp))
-        when (state) {
-            is TtsTestState.Result -> Text(
-                state.message,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (state.ok) Color(0xFF34C759) else Color(0xFFE5484D),
-                modifier = Modifier.weight(1f)
-            )
-            else -> {}
-        }
-    }
-}
-
-@Composable
-private fun ConfigTextField(label: String, initial: String, onCommit: (String) -> Unit) {
-    var value by remember(initial) { mutableStateOf(initial) }
-    OutlinedTextField(
-        value = value,
-        onValueChange = { value = it; onCommit(it) },
-        label = { Text(label) },
-        singleLine = true,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-    )
+private fun providerLabel(p: TtsProvider): String = when (p) {
+    TtsProvider.GEMINI -> "Gemini"
+    TtsProvider.MIMO -> "MiMo"
+    else -> "OpenAI"
 }
 
 @Composable
@@ -590,7 +428,7 @@ private fun InfoRow(label: String, value: String) {
 }
 
 @Composable
-private fun PolicyOption(label: String, selected: Boolean, onSelect: () -> Unit) {
+internal fun PolicyOption(label: String, selected: Boolean, onSelect: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -750,109 +588,3 @@ private fun ProbeResultCard(r: AudioPipelineProbe.Result) {
     }
 }
 
-// ============ 劫持统计 ============
-@Composable
-private fun InterceptStatsCard(
-    reads: Long,
-    bytes: Long,
-    lastMs: Long,
-    lastPkg: String?,
-    sampleRate: Int,
-    channels: Int
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        if (reads == 0L) {
-            Text(
-                stringResource(R.string.intercept_none),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                "可能原因：模块尚未注入 / 目标 App 没在录音 / 目标 App 使用 AAudio（NDK）路径",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-            )
-            return
-        }
-        StatLine(stringResource(R.string.settings_intercept_total_reads), reads.toString())
-        StatLine(stringResource(R.string.settings_intercept_total_bytes),
-            formatBytesSettings(bytes))
-        if (lastMs > 0) {
-            val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(lastMs))
-            StatLine(stringResource(R.string.settings_intercept_last), time)
-        }
-        if (!lastPkg.isNullOrBlank()) {
-            StatLine(stringResource(R.string.settings_intercept_last_pkg), lastPkg)
-        }
-        if (sampleRate > 0 || channels > 0) {
-            StatLine(stringResource(R.string.settings_intercept_format),
-                "${sampleRate} Hz / ${channels} ch")
-        }
-    }
-}
-
-@Composable
-private fun StatLine(label: String, value: String) {
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-        Text(label, style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f), modifier = Modifier.weight(1f))
-        Text(value, style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-private fun formatBytesSettings(b: Long): String = when {
-    b < 1024 -> "${b} B"
-    b < 1024 * 1024 -> "%.1f KB".format(b / 1024.0)
-    b < 1024L * 1024 * 1024 -> "%.1f MB".format(b / 1024.0 / 1024.0)
-    else -> "%.2f GB".format(b / 1024.0 / 1024.0 / 1024.0)
-}
-
-// ============ Xposed 状态卡片 ============
-@Composable
-private fun HookCard(activity: HookActivity, lastPingMs: Long, lastPkg: String?, api: Int) {
-    val (statusText, dotColor, longHint) = when (activity) {
-        HookActivity.ACTIVE -> Triple(
-            stringResource(R.string.hook_status_active),
-            Color(0xFF34C759),
-            stringResource(R.string.settings_hook_active_long)
-        )
-        HookActivity.STALE -> Triple(
-            stringResource(R.string.hook_status_stale),
-            Color(0xFFFFB020),
-            stringResource(R.string.settings_hook_stale_long)
-        )
-        HookActivity.NEVER_PINGED -> Triple(
-            stringResource(R.string.hook_status_never),
-            Color(0xFFE5484D),
-            stringResource(R.string.settings_hook_never_long)
-        )
-    }
-    Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .background(dotColor, CircleShape)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(statusText, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(longHint, style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-        if (activity != HookActivity.NEVER_PINGED && lastPingMs > 0) {
-            Spacer(modifier = Modifier.height(8.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(8.dp))
-            val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(lastPingMs))
-            Text("最近 ping: $time", style = MaterialTheme.typography.bodySmall)
-            if (!lastPkg.isNullOrBlank()) {
-                Text("最近 App: $lastPkg", style = MaterialTheme.typography.bodySmall)
-            }
-            if (api > 0) {
-                Text("API: $api", style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
-}

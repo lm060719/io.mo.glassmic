@@ -22,6 +22,7 @@ import io.mo.glassmic.ui.home.HomeScreen
 import io.mo.glassmic.ui.library.LibraryScreen
 import io.mo.glassmic.ui.onboarding.OnboardingFlow
 import io.mo.glassmic.ui.scope.ScopeScreen
+import io.mo.glassmic.ui.settings.AiTtsSettingsScreen
 import io.mo.glassmic.ui.settings.SettingsScreen
 import io.mo.glassmic.ui.settings.SafeModeScreen
 import io.mo.glassmic.ui.theme.GlassMicTheme
@@ -82,6 +83,7 @@ object Routes {
     const val LIBRARY = "library"
     const val SCOPE = "scope"
     const val SETTINGS = "settings"
+    const val AI_TTS = "ai_tts"
     const val SAFE_MODE = "safemode"
 }
 
@@ -113,7 +115,13 @@ private fun AppNavHost(nav: NavHostController, gate: GateDecision) {
         }
         composable(Routes.LIBRARY) { LibraryScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.SCOPE) { ScopeScreen(onBack = { nav.popBackStack() }) }
-        composable(Routes.SETTINGS) { SettingsScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.SETTINGS) {
+            SettingsScreen(
+                onBack = { nav.popBackStack() },
+                onOpenAiTts = { nav.navigate(Routes.AI_TTS) }
+            )
+        }
+        composable(Routes.AI_TTS) { AiTtsSettingsScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.SAFE_MODE) {
             SafeModeScreen(onExitComplete = {
                 nav.navigate(Routes.HOME) {

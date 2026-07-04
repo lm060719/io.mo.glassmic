@@ -6,12 +6,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import io.mo.glassmic.audio.tts.AiTtsSynthesizer
-import io.mo.glassmic.audio.tts.PcmSink
-import io.mo.glassmic.audio.tts.TtsRequest
 import io.mo.glassmic.service.WaveformOverlayService
 import io.mo.glassmic.data.audio.FloatingIconStore
-import io.mo.glassmic.data.audio.TtsCloneSampleStore
 import io.mo.glassmic.data.config.ConfigStore
 import io.mo.glassmic.data.diag.AudioPipelineProbe
 import io.mo.glassmic.data.diag.DiagnosticBundler
@@ -32,8 +28,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 data class SettingsUiState(
@@ -57,29 +51,12 @@ data class SettingsUiState(
     val probeResult: AudioPipelineProbe.Result? = null
 )
 
-/** AI TTS「测试连接」状态。 */
-sealed interface TtsTestState {
-    data object Idle : TtsTestState
-    data object Testing : TtsTestState
-    data class Result(val ok: Boolean, val message: String) : TtsTestState
-}
-
-/** AI TTS「获取模型」状态。 */
-sealed interface TtsModelsState {
-    data object Idle : TtsModelsState
-    data object Loading : TtsModelsState
-    data class Loaded(val models: List<String>) : TtsModelsState
-    data class Error(val message: String) : TtsModelsState
-}
-
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val configStore: ConfigStore,
     private val floatingIconStore: FloatingIconStore,
-    private val cloneSampleStore: TtsCloneSampleStore,
     private val bundler: DiagnosticBundler,
-    private val aiTts: AiTtsSynthesizer,
     private val probe: AudioPipelineProbe,
     private val audioStatsRepo: AudioStatsRepository,
     private val visibilityCompatRepo: VisibilityCompatRepository,
@@ -269,89 +246,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    // ============ 文字转语音（TTS） ============
-    fun setTtsSpeechRate(v: Float) = viewModelScope.launch {
-        configStore.update { it.setTts(it.tts.toBuilder().setSpeechRate(v.coerceIn(0.5f, 2f))) }
-    }
-
-    fun setTtsPitch(v: Float) = viewModelScope.launch {
-        configStore.update { it.setTts(it.tts.toBuilder().setPitch(v.coerceIn(0.5f, 2f))) }
-    }
-
-    fun setTtsVoice(v: String) = viewModelScope.launch {
-        configStore.update { it.setTts(it.tts.toBuilder().setVoice(v)) }
-    }
-
-    // ---- AI TTS（供应商）----
-    private fun updateAi(transform: (io.mo.glassmic.proto.TtsAiConfig.Builder) -> Unit) =
-        viewModelScope.launch {
-            configStore.update {
-                it.setTts(it.tts.toBuilder().setAi(it.tts.ai.toBuilder().also(transform)))
-            }
-        }
-
-    fun setTtsAiEnabled(v: Boolean) = updateAi { it.enabled = v }
-    fun setTtsAiProvider(p: io.mo.glassmic.proto.TtsProvider) = updateAi { it.provider = p }
-
-    // ---- AI TTS 连接测试 ----
-    private val _ttsTest = MutableStateFlow<TtsTestState>(TtsTestState.Idle)
-    /** 「测试连接」结果，UI 单独 collect。 */
-    val ttsTest: StateFlow<TtsTestState> = _ttsTest.asStateFlow()
-
-    /** 用当前 AI 配置合成一小段文本，验证地址/密钥/模型是否可用。 */
-    fun testTtsConnection() = viewModelScope.launch {
-        if (_ttsTest.value is TtsTestState.Testing) return@launch
-        _ttsTest.value = TtsTestState.Testing
-        val result = withTimeoutOrNull(25_000L) {
-            suspendCancellableCoroutine { cont ->
-                var bytes = 0
-                val sink = object : PcmSink {
-                    override fun onFormat(sampleRate: Int, channels: Int) {}
-                    override fun onPcm(chunk: ByteArray) { bytes += chunk.size }
-                    override fun onDone() {
-                        if (cont.isActive) cont.resumeWith(Result.success(true to "连接成功，收到 ${bytes / 1024} KB 音频"))
-                    }
-                    override fun onError(message: String) {
-                        if (cont.isActive) cont.resumeWith(Result.success(false to message))
-                    }
-                }
-                aiTts.synthesize(TtsRequest("这是一段连接测试。"), sink)
-                cont.invokeOnCancellation { aiTts.cancel() }
-            }
-        } ?: (false to "测试超时（25 秒）")
-        _ttsTest.value = TtsTestState.Result(result.first, result.second)
-    }
-
-    // ---- AI TTS 获取模型列表 ----
-    private val _ttsModels = MutableStateFlow<TtsModelsState>(TtsModelsState.Idle)
-    /** 「获取模型」结果，UI 单独 collect。 */
-    val ttsModels: StateFlow<TtsModelsState> = _ttsModels.asStateFlow()
-
-    /** 通过供应商接口拉取可用模型，供下拉选择。 */
-    fun fetchTtsModels() = viewModelScope.launch {
-        if (_ttsModels.value is TtsModelsState.Loading) return@launch
-        _ttsModels.value = TtsModelsState.Loading
-        _ttsModels.value = runCatching { aiTts.fetchModels() }.fold(
-            onSuccess = { if (it.isEmpty()) TtsModelsState.Error("接口未返回模型") else TtsModelsState.Loaded(it) },
-            onFailure = { TtsModelsState.Error(it.message ?: "获取失败") }
-        )
-    }
-    fun setTtsAiEndpoint(v: String) = updateAi { it.endpoint = v }
-    fun setTtsAiApiKey(v: String) = updateAi { it.apiKey = v }
-    fun setTtsAiModel(v: String) = updateAi { it.model = v }
-    fun setTtsAiVoice(v: String) = updateAi { it.voice = v }
-    fun setTtsAiFormat(v: String) = updateAi { it.format = v }
-    fun setTtsAiStylePrompt(v: String) = updateAi { it.stylePrompt = v }
-
-    /** 选择 voiceclone 参考音频：复制到私有目录并记录相对路径。传 null 清除。 */
-    fun setTtsAiCloneSample(uri: Uri?) = viewModelScope.launch {
-        val rel = if (uri == null) "" else cloneSampleStore.importSample(uri) ?: run {
-            _iconError.value = "参考音频导入失败"
-            return@launch
-        }
-        updateAi { it.cloneSamplePath = rel }
-    }
-
     // ============ 管线自检 + 统计 ============
     fun runPipelineProbe() {
         if (_probing.value) return
@@ -364,6 +258,4 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun consumeProbe() { _probeResult.value = null }
-
-    fun resetInterceptStats() { audioStatsRepo.reset() }
 }
