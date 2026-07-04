@@ -83,13 +83,6 @@ fun AiTtsSettingsScreen(
         ) {
             item {
                 Section("接入") {
-                    Text(
-                        "为悬浮窗「文字转语音」配置在线 AI 合成。开启后优先走 AI，否则回退系统 TTS；" +
-                            "endpoint / model 留空则按所选协议用官方默认。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                    )
                     SwitchRow(label = "启用 AI TTS", checked = ai.enabled, onChange = vm::setEnabled)
                     ProviderPicker(ai.provider, vm::setProvider)
                 }
@@ -143,8 +136,8 @@ fun AiTtsSettingsScreen(
                     )
                     PreviewRow(
                         state = vm.preview.collectAsState().value,
-                        onPlay = { vm.previewText(previewText) },
-                        onStop = vm::stopPreview
+                        onGenerate = { vm.generatePreview(previewText) },
+                        onPlay = vm::playPreview
                     )
                 }
             }
@@ -227,36 +220,30 @@ private fun CloneSampleRow(hasSample: Boolean, onPick: () -> Unit, onClear: () -
 }
 
 @Composable
-private fun PreviewRow(state: TtsPreviewState, onPlay: () -> Unit, onStop: () -> Unit) {
-    val busy = state is TtsPreviewState.Synthesizing || state is TtsPreviewState.Playing
+private fun PreviewRow(state: TtsPreviewState, onGenerate: () -> Unit, onPlay: () -> Unit) {
+    val generating = state is TtsPreviewState.Generating
+    val playing = state is TtsPreviewState.Playing
+    val ready = state is TtsPreviewState.Ready || playing
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        TextButton(onClick = { if (busy) onStop() else onPlay() }) {
-            Text(
-                when (state) {
-                    is TtsPreviewState.Synthesizing -> "合成中…（点此停止）"
-                    is TtsPreviewState.Playing -> "停止播放"
-                    else -> "效果试听"
-                }
-            )
+        TextButton(onClick = onGenerate, enabled = !generating) {
+            Text(if (generating) "生成中…" else "生成")
+        }
+        Spacer(modifier = Modifier.width(4.dp))
+        TextButton(onClick = onPlay, enabled = ready && !playing) {
+            Text(if (playing) "播放中…" else "效果试听")
         }
         Spacer(modifier = Modifier.width(8.dp))
-        if (state is TtsPreviewState.Error) {
-            Text(
+        when (state) {
+            is TtsPreviewState.Error -> Text(
                 state.message,
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFFE5484D),
                 modifier = Modifier.weight(1f)
             )
-        } else if (state is TtsPreviewState.Playing) {
-            Text(
-                "播放中…",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                modifier = Modifier.weight(1f)
-            )
+            else -> {}
         }
     }
 }

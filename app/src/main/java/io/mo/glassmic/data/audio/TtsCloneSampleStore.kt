@@ -36,6 +36,11 @@ class TtsCloneSampleStore @Inject constructor(
 
     fun sampleFile(relativePath: String): File = File(context.filesDir, relativePath)
 
+    /** 删除已保存的参考音频文件（清除时调用，避免磁盘残留）。 */
+    fun clear() {
+        runCatching { dir.listFiles()?.forEach { it.delete() } }
+    }
+
     /** 导入参考音频，先校验大小与时长再复制。 */
     suspend fun importSample(uri: Uri): SampleImport = withContext(Dispatchers.IO) {
         querySize(uri)?.let { size ->

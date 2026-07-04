@@ -47,10 +47,11 @@ sealed interface TtsModelsState {
     data class Error(val message: String) : TtsModelsState
 }
 
-/** AI TTS「效果试听」状态。 */
+/** AI TTS「效果试听」状态（先生成后播放，可重复播放）。 */
 sealed interface TtsPreviewState {
     data object Idle : TtsPreviewState
-    data object Synthesizing : TtsPreviewState
+    data object Generating : TtsPreviewState
+    data class Ready(val bytes: Int) : TtsPreviewState   // 已生成，可播放/重播
     data object Playing : TtsPreviewState
     data class Error(val message: String) : TtsPreviewState
 }
@@ -88,6 +89,7 @@ class AiTtsViewModel @Inject constructor(
 
     fun setCloneSample(uri: Uri?) = viewModelScope.launch {
         if (uri == null) {
+            cloneSampleStore.clear()
             updateAi { it.cloneSamplePath = "" }
             return@launch
         }
@@ -137,22 +139,26 @@ class AiTtsViewModel @Inject constructor(
         )
     }
 
-    // ---- 效果试听（合成后用扬声器播放） ----
+    // ---- 效果试听：先生成，再点播放（可重复播放）----
     private val _preview = MutableStateFlow<TtsPreviewState>(TtsPreviewState.Idle)
     val preview: StateFlow<TtsPreviewState> = _preview.asStateFlow()
 
     @Volatile private var previewTrack: AudioTrack? = null
     private var previewJob: Job? = null
+    @Volatile private var generatedPcm: ByteArray? = null
+    @Volatile private var generatedSr = 24_000
+    @Volatile private var generatedCh = 1
 
-    /** 合成 [text] 并从扬声器播放，用来试听音色/效果。 */
-    fun previewText(text: String) {
+    /** 生成 [text] 的语音并缓存（不自动播放）。 */
+    fun generatePreview(text: String) {
         val t = text.trim()
         if (t.isEmpty()) {
             _preview.value = TtsPreviewState.Error("请先输入试听文本")
             return
         }
-        stopPreview()
-        _preview.value = TtsPreviewState.Synthesizing
+        stopPlayback()
+        generatedPcm = null
+        _preview.value = TtsPreviewState.Generating
         val out = ByteArrayOutputStream()
         var sr = 24_000
         var ch = 1
@@ -162,17 +168,31 @@ class AiTtsViewModel @Inject constructor(
                 ch = channels.coerceAtLeast(1)
             }
             override fun onPcm(chunk: ByteArray) { out.write(chunk) }
-            override fun onDone() { startPlayback(out.toByteArray(), sr, ch) }
+            override fun onDone() {
+                val pcm = out.toByteArray()
+                if (pcm.isEmpty()) {
+                    _preview.value = TtsPreviewState.Error("未获取到音频")
+                } else {
+                    generatedPcm = pcm; generatedSr = sr; generatedCh = ch
+                    _preview.value = TtsPreviewState.Ready(pcm.size)
+                }
+            }
             override fun onError(message: String) { _preview.value = TtsPreviewState.Error(message) }
         }
         aiTts.synthesize(TtsRequest(t), sink)
     }
 
-    private fun startPlayback(pcm: ByteArray, sampleRate: Int, channels: Int) {
-        if (pcm.isEmpty()) {
-            _preview.value = TtsPreviewState.Error("未获取到音频")
+    /** 播放上次生成的语音（可重复调用重播）。 */
+    fun playPreview() {
+        val pcm = generatedPcm ?: run {
+            _preview.value = TtsPreviewState.Error("请先点「生成」")
             return
         }
+        startPlayback(pcm, generatedSr, generatedCh)
+    }
+
+    private fun startPlayback(pcm: ByteArray, sampleRate: Int, channels: Int) {
+        stopPlayback()
         previewJob = viewModelScope.launch(Dispatchers.IO) {
             val chMask = if (channels >= 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
             val minBuf = AudioTrack.getMinBufferSize(sampleRate, chMask, AudioFormat.ENCODING_PCM_16BIT)
@@ -201,22 +221,27 @@ class AiTtsViewModel @Inject constructor(
                 runCatching { track.stop() }
                 runCatching { track.release() }
                 previewTrack = null
-                if (_preview.value is TtsPreviewState.Playing) _preview.value = TtsPreviewState.Idle
+                // 播完回到「已生成」，可再次播放
+                if (_preview.value is TtsPreviewState.Playing) _preview.value = TtsPreviewState.Ready(pcm.size)
             }
         }
     }
 
-    /** 停止试听并释放播放资源。 */
-    fun stopPreview() {
+    private fun stopPlayback() {
         previewJob?.cancel()
         previewJob = null
         previewTrack?.let { runCatching { it.stop() }; runCatching { it.release() } }
         previewTrack = null
-        aiTts.cancel()
-        if (_preview.value !is TtsPreviewState.Error) _preview.value = TtsPreviewState.Idle
+    }
+
+    /** 停止播放（保留已生成音频，仍可再次播放）。 */
+    fun stopPreview() {
+        stopPlayback()
+        _preview.value = generatedPcm?.let { TtsPreviewState.Ready(it.size) } ?: TtsPreviewState.Idle
     }
 
     override fun onCleared() {
-        stopPreview()
+        stopPlayback()
+        aiTts.cancel()
     }
 }

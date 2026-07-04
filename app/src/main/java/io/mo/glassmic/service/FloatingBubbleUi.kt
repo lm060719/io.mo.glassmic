@@ -91,7 +91,10 @@ fun FloatingBubbleRoot(
     onCollapse: () -> Unit,
     onSelectClip: (String) -> Unit,
     onOpenTts: () -> Unit,
-    onSpeakTts: (String) -> Unit,
+    ttsGenerating: Boolean,
+    ttsReady: Boolean,
+    onGenerateTts: (String) -> Unit,
+    onPlayTts: () -> Unit,
     onDragBy: (Float, Float) -> Unit,
     onDragEnd: () -> Unit,
 ) {
@@ -123,7 +126,10 @@ fun FloatingBubbleRoot(
             onCollapse = onCollapse
         )
         FloatMode.TTS -> TtsPanel(
-            onSpeak = onSpeakTts,
+            generating = ttsGenerating,
+            ready = ttsReady,
+            onGenerate = onGenerateTts,
+            onPlay = onPlayTts,
             onCollapse = onCollapse
         )
     }
@@ -343,10 +349,13 @@ private fun SelectMenu(
     }
 }
 
-// ============ 文字转语音面板 ============
+// ============ 文字转语音面板（先生成后播放，可重复播放）============
 @Composable
 private fun TtsPanel(
-    onSpeak: (String) -> Unit,
+    generating: Boolean,
+    ready: Boolean,
+    onGenerate: (String) -> Unit,
+    onPlay: () -> Unit,
     onCollapse: () -> Unit,
 ) {
     var text by remember { mutableStateOf("") }
@@ -383,7 +392,7 @@ private fun TtsPanel(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 decorationBox = { inner ->
                     if (text.isEmpty()) {
-                        Text("输入要合成的文字", color = OnDarkDim, fontSize = 14.sp)
+                        Text("输入要合成的文字，先生成再播放", color = OnDarkDim, fontSize = 14.sp)
                     }
                     inner()
                 }
@@ -394,21 +403,36 @@ private fun TtsPanel(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val canGenerate = !generating && text.isNotBlank()
             Text(
-                text = "播报",
+                text = if (generating) "生成中…" else "生成",
                 color = OnDark,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
-                    .background(if (text.isBlank()) Color(0x33FFFFFF) else Accent)
-                    .clickable(enabled = text.isNotBlank()) {
-                        onSpeak(text.trim())
-                        text = ""
-                    }
+                    .background(if (canGenerate) Color(0x33FFFFFF) else Color(0x1AFFFFFF))
+                    .clickable(enabled = canGenerate) { onGenerate(text.trim()) }
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = "播放",
+                color = OnDark,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (ready) Accent else Color(0x1AFFFFFF))
+                    .clickable(enabled = ready, onClick = onPlay)
                     .padding(horizontal = 18.dp, vertical = 8.dp)
             )
         }
+        Text(
+            text = if (ready) "已生成，可重复点「播放」喂给目标 App" else "先点「生成」，再点「播放」",
+            color = OnDarkDim, fontSize = 11.sp,
+            modifier = Modifier.padding(top = 8.dp)
+        )
     }
 }
 

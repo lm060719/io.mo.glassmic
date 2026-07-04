@@ -163,7 +163,7 @@
     <string name="settings_export_diag">导出诊断包</string>
     <string name="settings_clear_log">清空内存日志</string>
     <string name="settings_pipeline_probe">测试音频管线（本地）</string>
-    <string name="settings_pipeline_probe_hint">本地打开 PCM 通道读 1 秒，判断 App 侧管线是否通；不依赖 Xposed</string>
+    <string name="settings_pipeline_probe_hint">本地打开 PCM 通道读 1 秒，判断 App 侧管线是否通</string>
     <string name="settings_section_intercept">劫持统计</string>
     <string name="settings_intercept_reset">清零</string>
     <string name="settings_intercept_total_reads">已劫持次数</string>

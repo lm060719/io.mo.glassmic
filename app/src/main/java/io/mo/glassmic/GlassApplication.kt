@@ -37,6 +37,14 @@ class GlassApplication : Application() {
         bootGate.refreshBootId()
         watchdog.attach()
 
+        // 清理遗留的 TTS 临时合成文件：正常随合成结束删除，进程被杀时可能残留。
+        // 放后台线程做，避免阻塞启动。
+        Thread {
+            runCatching {
+                cacheDir.listFiles { f -> f.name.startsWith("glass-tts-") }?.forEach { it.delete() }
+            }
+        }.start()
+
         GlassLog.b("App") { "GlassMic Application started" }
     }
 }

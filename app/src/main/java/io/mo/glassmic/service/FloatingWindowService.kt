@@ -118,6 +118,7 @@ class FloatingWindowService : LifecycleService() {
                 val groups by audioDao.observeGroups().collectAsState(initial = emptyList())
                 val allClips by audioDao.observeAllClips().collectAsState(initial = emptyList())
                 val mode by modeFlow.collectAsState()
+                val ttsGen by playback.ttsGen.collectAsState()
 
                 val activeFile = rt.currentSourceType == SourceType.FILE && rt.enabled && !rt.safeMode
                 val currentId = cfg.currentAudioId
@@ -147,7 +148,10 @@ class FloatingWindowService : LifecycleService() {
                     onCollapse = { setMode(FloatMode.BALL) },
                     onSelectClip = { clipId -> onSelectClip(clipId) },
                     onOpenTts = { setMode(FloatMode.TTS) },
-                    onSpeakTts = { text -> onSpeakTts(text) },
+                    ttsGenerating = ttsGen == PlaybackController.TtsGen.GENERATING,
+                    ttsReady = ttsGen == PlaybackController.TtsGen.READY,
+                    onGenerateTts = { text -> onGenerateTts(text) },
+                    onPlayTts = { onPlayTts() },
                     onDragBy = { dx, dy -> onDragBy(dx, dy) },
                     onDragEnd = { onDragEnd() },
                 )
@@ -170,11 +174,17 @@ class FloatingWindowService : LifecycleService() {
         }
     }
 
-    private fun onSpeakTts(text: String) {
+    private fun onGenerateTts(text: String) {
         lifecycleScope.launch {
-            val ok = playback.speakTts(text)
-            if (!ok) GlassLog.b("Float") { "TTS 播报失败（文本为空或引擎不可用）" }
-            // 面板保留，方便连续播报；不主动收起
+            val ok = playback.generateTts(text)
+            if (!ok) GlassLog.b("Float") { "TTS 生成失败（文本为空或引擎不可用）" }
+        }
+    }
+
+    private fun onPlayTts() {
+        lifecycleScope.launch {
+            val ok = playback.playGeneratedTts()
+            if (!ok) GlassLog.b("Float") { "TTS 播放失败（尚未生成）" }
         }
     }
 

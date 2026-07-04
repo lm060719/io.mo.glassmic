@@ -145,12 +145,6 @@ fun SettingsScreen(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 item { Section(stringResource(R.string.settings_section_tile)) {
                     ActionRow(stringResource(R.string.settings_tile_add), onClick = onAddTile)
-                    Text(
-                        stringResource(R.string.settings_tile_add_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                    )
                 } }
             }
 

@@ -1,9 +1,11 @@
 package io.mo.glassmic.data.audio
 
+import io.mo.glassmic.audio.BufferedPcmSource
 import io.mo.glassmic.audio.FileAudioSource
+import io.mo.glassmic.audio.Pcm16Converter
 import io.mo.glassmic.audio.SharedPcmPublisher
 import io.mo.glassmic.audio.SilenceSource
-import io.mo.glassmic.audio.TtsAudioSource
+import io.mo.glassmic.audio.tts.PcmSink
 import io.mo.glassmic.audio.tts.TtsRequest
 import io.mo.glassmic.audio.tts.TtsSynthesizerFactory
 import io.mo.glassmic.core.model.SourceType
@@ -12,7 +14,13 @@ import io.mo.glassmic.data.db.AudioDao
 import io.mo.glassmic.data.runtime.RuntimeStateHolder
 import io.mo.glassmic.log.GlassLog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -57,13 +65,24 @@ class PlaybackController @Inject constructor(
         true
     }
 
+    // ============ 文字转语音（先生成后播放） ============
+    enum class TtsGen { IDLE, GENERATING, READY }
+
+    private val _ttsGen = MutableStateFlow(TtsGen.IDLE)
+    /** 生成状态：供悬浮窗决定「播放」按钮是否可用。 */
+    val ttsGen: StateFlow<TtsGen> = _ttsGen.asStateFlow()
+
+    @Volatile private var generatedTtsPcm: ByteArray? = null
+
     /**
-     * 文字转语音 → 虚拟麦克风：把 [text] 合成为语音喂给目标 App。
-     * 测试语音识别/语音输入类场景比准备音频文件方便。文件不变，切换为 TTS 音源。
+     * 生成 [text] 的语音并缓存为主格式 PCM（不立即播放）。成功返回 true。
+     * 之后调用 [playGeneratedTts] 才真正喂给目标 App，可重复播放。
      */
-    suspend fun speakTts(text: String): Boolean = withContext(Dispatchers.IO) {
+    suspend fun generateTts(text: String): Boolean = withContext(Dispatchers.IO) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return@withContext false
+        _ttsGen.value = TtsGen.GENERATING
+        generatedTtsPcm = null
         val ttsCfg = configStore.current().tts
         val synth = ttsFactory.current()
         val req = TtsRequest(
@@ -72,15 +91,65 @@ class PlaybackController @Inject constructor(
             pitch = ttsCfg.pitch.takeIf { it > 0f } ?: 1f,
             voice = ttsCfg.voice
         )
-        publisher.setSource(TtsAudioSource(synth, req))
+        val pcm = withTimeoutOrNull(30_000L) { synthesizeToMasterPcm(synth, req) }
+        if (pcm != null && pcm.isNotEmpty()) {
+            generatedTtsPcm = pcm
+            _ttsGen.value = TtsGen.READY
+            GlassLog.b("Playback") { "TTS 已生成: ${trimmed.take(20)} (${pcm.size} B)" }
+            true
+        } else {
+            _ttsGen.value = TtsGen.IDLE
+            GlassLog.b("Playback") { "TTS 生成失败/超时: ${trimmed.take(20)}" }
+            false
+        }
+    }
+
+    /** 把上次生成的语音喂给目标 App，可重复调用重播。 */
+    suspend fun playGeneratedTts(): Boolean = withContext(Dispatchers.IO) {
+        val pcm = generatedTtsPcm ?: return@withContext false
+        publisher.setSource(BufferedPcmSource(pcm))
         publisher.setPaused(false)
-        // TTS 不是文件片段，清空持久化选中避免重启后误恢复
         configStore.update {
             it.setCurrentGroupId("")
             it.setCurrentAudioId("")
         }
-        GlassLog.b("Playback") { "TTS 播报: ${trimmed.take(20)}" }
         true
+    }
+
+    /** 合成并转成主时钟格式（48kHz 单声道 PCM16）。 */
+    private suspend fun synthesizeToMasterPcm(
+        synth: io.mo.glassmic.audio.tts.SpeechSynthesizer,
+        req: TtsRequest
+    ): ByteArray? = suspendCancellableCoroutine { cont ->
+        val out = ByteArrayOutputStream()
+        var converter: Pcm16Converter? = null
+        val sink = object : PcmSink {
+            override fun onFormat(sampleRate: Int, channels: Int) {
+                converter = Pcm16Converter(
+                    sourceSampleRate = sampleRate.coerceAtLeast(8_000),
+                    sourceChannels = channels.coerceAtLeast(1),
+                    targetSampleRate = MASTER_SAMPLE_RATE,
+                    targetChannels = MASTER_CHANNELS
+                )
+            }
+            override fun onPcm(chunk: ByteArray) {
+                val c = converter ?: return
+                out.write(c.convert(chunk))
+            }
+            override fun onDone() {
+                if (cont.isActive) cont.resumeWith(Result.success(out.toByteArray()))
+            }
+            override fun onError(message: String) {
+                if (cont.isActive) cont.resumeWith(Result.success(null))
+            }
+        }
+        synth.synthesize(req, sink)
+        cont.invokeOnCancellation { synth.cancel() }
+    }
+
+    private companion object {
+        const val MASTER_SAMPLE_RATE = 48_000
+        const val MASTER_CHANNELS = 1
     }
 
     /** 切回真实麦克风：释放当前 file source，运行态置 REAL_MIC，清空持久化选中。 */
