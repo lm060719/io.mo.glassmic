@@ -61,6 +61,14 @@ fun AiTtsSettingsScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) vm.setCloneSample(uri) }
 
+    val saveMessage by vm.saveMessage.collectAsState()
+    LaunchedEffect(saveMessage) {
+        saveMessage?.let { snackbar.showSnackbar(it); vm.consumeSaveMessage() }
+    }
+    val saveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("audio/wav")
+    ) { uri -> if (uri != null) vm.saveGeneratedTo(uri) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -137,7 +145,8 @@ fun AiTtsSettingsScreen(
                     PreviewRow(
                         state = vm.preview.collectAsState().value,
                         onGenerate = { vm.generatePreview(previewText) },
-                        onPlay = vm::playPreview
+                        onPlay = vm::playPreview,
+                        onSave = { saveLauncher.launch(vm.suggestedFileName()) }
                     )
                 }
             }
@@ -220,7 +229,12 @@ private fun CloneSampleRow(hasSample: Boolean, onPick: () -> Unit, onClear: () -
 }
 
 @Composable
-private fun PreviewRow(state: TtsPreviewState, onGenerate: () -> Unit, onPlay: () -> Unit) {
+private fun PreviewRow(
+    state: TtsPreviewState,
+    onGenerate: () -> Unit,
+    onPlay: () -> Unit,
+    onSave: () -> Unit,
+) {
     val generating = state is TtsPreviewState.Generating
     val playing = state is TtsPreviewState.Playing
     val ready = state is TtsPreviewState.Ready || playing
@@ -235,15 +249,19 @@ private fun PreviewRow(state: TtsPreviewState, onGenerate: () -> Unit, onPlay: (
         TextButton(onClick = onPlay, enabled = ready && !playing) {
             Text(if (playing) "播放中…" else "效果试听")
         }
+        // 生成出试听音频后才显示「保存音频」
+        if (ready) {
+            Spacer(modifier = Modifier.width(4.dp))
+            TextButton(onClick = onSave) { Text("保存音频") }
+        }
         Spacer(modifier = Modifier.width(8.dp))
-        when (state) {
-            is TtsPreviewState.Error -> Text(
+        if (state is TtsPreviewState.Error) {
+            Text(
                 state.message,
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFFE5484D),
                 modifier = Modifier.weight(1f)
             )
-            else -> {}
         }
     }
 }

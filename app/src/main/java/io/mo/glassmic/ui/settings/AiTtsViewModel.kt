@@ -1,5 +1,6 @@
 package io.mo.glassmic.ui.settings
 
+import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -8,6 +9,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import io.mo.glassmic.audio.tts.AiTtsSynthesizer
 import io.mo.glassmic.audio.tts.PcmSink
 import io.mo.glassmic.audio.tts.TtsRequest
@@ -30,6 +32,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
+import java.io.OutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import javax.inject.Inject
 
 /** AI TTS「测试连接」状态。 */
@@ -59,6 +64,7 @@ sealed interface TtsPreviewState {
 /** AI 供应商（TTS）配置页的 ViewModel。 */
 @HiltViewModel
 class AiTtsViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val configStore: ConfigStore,
     private val aiTts: AiTtsSynthesizer,
     private val cloneSampleStore: TtsCloneSampleStore
@@ -238,6 +244,60 @@ class AiTtsViewModel @Inject constructor(
     fun stopPreview() {
         stopPlayback()
         _preview.value = generatedPcm?.let { TtsPreviewState.Ready(it.size) } ?: TtsPreviewState.Idle
+    }
+
+    // ---- 保存已生成音频到本地 ----
+    private val _saveMessage = MutableStateFlow<String?>(null)
+    /** 保存结果提示，UI 单独 collect 弹 snackbar。 */
+    val saveMessage: StateFlow<String?> = _saveMessage.asStateFlow()
+    fun consumeSaveMessage() { _saveMessage.value = null }
+
+    /** 建议的保存文件名。 */
+    fun suggestedFileName(): String = "glassmic-tts-${System.currentTimeMillis()}.wav"
+
+    /** 是否已有可保存的生成音频。 */
+    fun hasGenerated(): Boolean = generatedPcm != null
+
+    /** 把上次生成的语音写成 WAV 保存到用户选择的 [uri]。 */
+    fun saveGeneratedTo(uri: Uri) {
+        val pcm = generatedPcm
+        if (pcm == null) {
+            _saveMessage.value = "请先生成音频"
+            return
+        }
+        val sr = generatedSr
+        val ch = generatedCh
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = runCatching {
+                context.contentResolver.openOutputStream(uri)?.use { out -> writeWav(out, pcm, sr, ch) }
+                    ?: error("无法打开输出流")
+            }.isSuccess
+            _saveMessage.value = if (ok) "已保存音频" else "保存失败"
+        }
+    }
+
+    /** 给裸 PCM16 加 WAV 头写出。 */
+    private fun writeWav(out: OutputStream, pcm: ByteArray, sampleRate: Int, channels: Int) {
+        val bitsPerSample = 16
+        val byteRate = sampleRate * channels * bitsPerSample / 8
+        val blockAlign = channels * bitsPerSample / 8
+        val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN)
+        header.put("RIFF".toByteArray(Charsets.US_ASCII))
+        header.putInt(36 + pcm.size)
+        header.put("WAVE".toByteArray(Charsets.US_ASCII))
+        header.put("fmt ".toByteArray(Charsets.US_ASCII))
+        header.putInt(16)
+        header.putShort(1)                       // PCM
+        header.putShort(channels.toShort())
+        header.putInt(sampleRate)
+        header.putInt(byteRate)
+        header.putShort(blockAlign.toShort())
+        header.putShort(bitsPerSample.toShort())
+        header.put("data".toByteArray(Charsets.US_ASCII))
+        header.putInt(pcm.size)
+        out.write(header.array())
+        out.write(pcm)
+        out.flush()
     }
 
     override fun onCleared() {
