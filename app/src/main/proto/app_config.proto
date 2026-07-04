@@ -47,15 +47,28 @@ message TtsConfig {
   TtsAiConfig ai = 4;
 }
 
-// AI TTS 接入配置。留作扩展：接入任意在线 TTS（OpenAI / Azure / 火山 等）。
+// AI TTS 接入配置。兼容 OpenAI / Gemini 接口协议，支持自定义 url 与模型。
 message TtsAiConfig {
   bool enabled = 1;        // 是否优先走 AI TTS（关闭则回退系统 TTS）
-  string endpoint = 2;     // 合成接口地址
+  string endpoint = 2;     // 自定义接口地址（留空按 provider 用官方默认）
   string api_key = 3;      // 鉴权 key
-  string model = 4;        // 模型名
+  string model = 4;        // 自定义模型名（留空按 provider 用默认）
   string voice = 5;        // 音色名
-  string format = 6;       // 期望返回音频格式：pcm16 / wav / mp3
+  string format = 6;       // 期望返回音频格式（OpenAI 用）：wav / pcm / mp3…
   int32 sample_rate = 7;   // 若已知返回采样率（Hz），0 表示未知
+  TtsProvider provider = 8; // 接口协议
+
+  // MiMo 专用：
+  string style_prompt = 9;       // user 消息内容：preset 的风格指令 / voicedesign 的音色描述
+  string clone_sample_path = 10; // voiceclone 参考音频样本（filesDir 下相对路径）
+}
+
+enum TtsProvider {
+  OPENAI = 0;      // OpenAI /audio/speech 协议（及兼容网关）
+  GEMINI = 2;      // Google Gemini generateContent（AUDIO 模态）
+  MIMO = 3;        // 小米 MiMo：/chat/completions + audio 参数，音频在 message 里 base64
+  reserved 1;      // 曾用于 ANTHROPIC——官方无 TTS 接口，已移除
+  reserved "ANTHROPIC";
 }
 
 enum ScopeMode {

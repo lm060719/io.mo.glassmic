@@ -20,8 +20,9 @@ class TtsSynthesizerFactory @Inject constructor(
     /** 返回当前应使用的合成器（不持有状态，可直接调用 synthesize）。 */
     suspend fun current(): SpeechSynthesizer {
         val aiCfg = runCatching { configStore.current().tts.ai }.getOrNull()
-        return if (aiCfg != null && aiCfg.enabled && aiCfg.endpoint.isNotBlank()) {
-            GlassLog.b("Tts") { "使用 AI TTS" }
+        // 开启即走 AI（endpoint/model 可留空按 provider 用默认）；否则系统 TTS。
+        return if (aiCfg != null && aiCfg.enabled) {
+            GlassLog.b("Tts") { "使用 AI TTS: ${aiCfg.provider}" }
             ai
         } else {
             system
