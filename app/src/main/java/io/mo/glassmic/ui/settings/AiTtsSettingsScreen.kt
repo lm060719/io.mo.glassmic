@@ -111,7 +111,7 @@ fun AiTtsSettingsScreen(
                     if (ai.provider == TtsProvider.MIMO) {
                         Text(
                             "MiMo 进阶：模型填 -voicedesign 用文本描述定制音色（写在下方描述框）；" +
-                                "填 -voiceclone 复刻音色（选一段 ≤30 秒、≤2MB 的参考音频）。",
+                                "填 -voiceclone 复刻音色（选一段 ≤60 秒、≤5MB 的参考音频）。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -218,7 +218,7 @@ private fun CloneSampleRow(hasSample: Boolean, onPick: () -> Unit, onClear: () -
         Column(modifier = Modifier.weight(1f)) {
             Text("参考音频（voiceclone）", style = MaterialTheme.typography.bodyLarge)
             Text(
-                if (hasSample) "已选择样本（≤30 秒 / ≤2MB）" else "未选择——复刻音色需先选一段音频样本",
+                if (hasSample) "已选择样本（≤60 秒 / ≤5MB）" else "未选择——复刻音色需先选一段音频样本",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )

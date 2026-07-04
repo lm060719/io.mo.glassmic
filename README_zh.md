@@ -24,7 +24,7 @@ GlassMic 是一个面向 Root Android 设备和 LSPosed 的开源虚拟麦克风
 - 文字转语音（TTS）：输入文字即可把合成语音喂给目标 App，测试语音识别 / 语音输入场景比准备音频文件方便。
 - TTS 采用「先生成、后播放」两步，播放可重复。
 - 开箱即用的离线系统 TTS，另可选在线 AI TTS，兼容 OpenAI、Google Gemini、小米 MiMo 协议，支持自定义接口地址与模型、拉取模型列表、测试连接与效果试听。
-- MiMo 支持预置音色、文本描述定制音色（voicedesign）、以及基于音频样本复刻音色（voiceclone，≤30 秒 / ≤2MB）。
+- MiMo 支持预置音色、文本描述定制音色（voicedesign）、以及基于音频样本复刻音色（voiceclone，≤60 秒 / ≤5MB）。
 
 ## 文字转语音（TTS）
 
@@ -34,7 +34,7 @@ GlassMic 是一个面向 Root Android 设备和 LSPosed 的开源虚拟麦克风
 - **AI TTS**（设置 → AI 供应商（TTS)）走在线合成，支持自定义接口地址与模型，兼容三种协议：
   - **OpenAI** —— `/audio/speech`
   - **Google Gemini** —— `generateContent`（AUDIO 模态）
-  - **小米 MiMo** —— `chat/completions`，含预置音色、文本描述定制音色（voicedesign）、以及基于参考音频复刻音色（voiceclone，≤30 秒 / ≤2MB）
+  - **小米 MiMo** —— `chat/completions`，含预置音色、文本描述定制音色（voicedesign）、以及基于参考音频复刻音色（voiceclone，≤60 秒 / ≤5MB）
 - 可从供应商接口拉取模型列表、测试连接、并先试听效果（生成后从扬声器播放）再喂给 App。
 
 ## 环境要求

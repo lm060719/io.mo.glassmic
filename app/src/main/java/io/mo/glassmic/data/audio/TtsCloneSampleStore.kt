@@ -44,10 +44,10 @@ class TtsCloneSampleStore @Inject constructor(
     /** 导入参考音频，先校验大小与时长再复制。 */
     suspend fun importSample(uri: Uri): SampleImport = withContext(Dispatchers.IO) {
         querySize(uri)?.let { size ->
-            if (size > MAX_BYTES) return@withContext SampleImport.Err("音频超过 2MB（当前约 ${size / 1024} KB）")
+            if (size > MAX_BYTES) return@withContext SampleImport.Err("音频超过 5MB（当前约 ${size / 1024} KB）")
         }
         queryDurationMs(uri)?.let { dur ->
-            if (dur > MAX_DURATION_MS) return@withContext SampleImport.Err("音频超过 30 秒（当前约 ${dur / 1000} 秒）")
+            if (dur > MAX_DURATION_MS) return@withContext SampleImport.Err("音频超过 60 秒（当前约 ${dur / 1000} 秒）")
         }
         runCatching {
             val ext = when (context.contentResolver.getType(uri)) {
@@ -63,7 +63,7 @@ class TtsCloneSampleStore @Inject constructor(
             // 大小查询可能为空，用实际文件长度兜底
             if (out.length() > MAX_BYTES) {
                 out.delete()
-                return@runCatching SampleImport.Err("音频超过 2MB")
+                return@runCatching SampleImport.Err("音频超过 5MB")
             }
             SampleImport.Ok("tts/${out.name}")
         }.getOrElse {
@@ -89,7 +89,7 @@ class TtsCloneSampleStore @Inject constructor(
     }.getOrNull()
 
     private companion object {
-        const val MAX_BYTES = 2L * 1024 * 1024   // 2MB
-        const val MAX_DURATION_MS = 30_000L       // 30s
+        const val MAX_BYTES = 5L * 1024 * 1024   // 5MB
+        const val MAX_DURATION_MS = 60_000L       // 60s
     }
 }
