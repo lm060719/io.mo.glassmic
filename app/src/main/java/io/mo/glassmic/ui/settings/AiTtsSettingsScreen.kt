@@ -130,8 +130,22 @@ fun AiTtsSettingsScreen(
             }
 
             item {
-                Section("测试") {
+                Section("测试与试听") {
                     TestRow(vm.test.collectAsState().value, onTest = vm::testConnection)
+                    var previewText by remember { mutableStateOf("你好，这是一段用于试听的示例文本。") }
+                    OutlinedTextField(
+                        value = previewText,
+                        onValueChange = { previewText = it },
+                        label = { Text("试听文本") },
+                        minLines = 2,
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                    PreviewRow(
+                        state = vm.preview.collectAsState().value,
+                        onPlay = { vm.previewText(previewText) },
+                        onStop = vm::stopPreview
+                    )
                 }
             }
 
@@ -209,6 +223,41 @@ private fun CloneSampleRow(hasSample: Boolean, onPick: () -> Unit, onClear: () -
         }
         if (hasSample) TextButton(onClick = onClear) { Text("清除") }
         TextButton(onClick = onPick) { Text("选择音频") }
+    }
+}
+
+@Composable
+private fun PreviewRow(state: TtsPreviewState, onPlay: () -> Unit, onStop: () -> Unit) {
+    val busy = state is TtsPreviewState.Synthesizing || state is TtsPreviewState.Playing
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TextButton(onClick = { if (busy) onStop() else onPlay() }) {
+            Text(
+                when (state) {
+                    is TtsPreviewState.Synthesizing -> "合成中…（点此停止）"
+                    is TtsPreviewState.Playing -> "停止播放"
+                    else -> "效果试听"
+                }
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        if (state is TtsPreviewState.Error) {
+            Text(
+                state.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFE5484D),
+                modifier = Modifier.weight(1f)
+            )
+        } else if (state is TtsPreviewState.Playing) {
+            Text(
+                "播放中…",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }
 

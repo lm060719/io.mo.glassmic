@@ -1,5 +1,9 @@
 package io.mo.glassmic.ui.settings
 
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.AudioTrack
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -13,15 +17,19 @@ import io.mo.glassmic.data.config.ConfigStore
 import io.mo.glassmic.proto.AppConfig
 import io.mo.glassmic.proto.TtsAiConfig
 import io.mo.glassmic.proto.TtsProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 /** AI TTS「测试连接」状态。 */
@@ -37,6 +45,14 @@ sealed interface TtsModelsState {
     data object Loading : TtsModelsState
     data class Loaded(val models: List<String>) : TtsModelsState
     data class Error(val message: String) : TtsModelsState
+}
+
+/** AI TTS「效果试听」状态。 */
+sealed interface TtsPreviewState {
+    data object Idle : TtsPreviewState
+    data object Synthesizing : TtsPreviewState
+    data object Playing : TtsPreviewState
+    data class Error(val message: String) : TtsPreviewState
 }
 
 /** AI 供应商（TTS）配置页的 ViewModel。 */
@@ -119,5 +135,88 @@ class AiTtsViewModel @Inject constructor(
             onSuccess = { if (it.isEmpty()) TtsModelsState.Error("接口未返回模型") else TtsModelsState.Loaded(it) },
             onFailure = { TtsModelsState.Error(it.message ?: "获取失败") }
         )
+    }
+
+    // ---- 效果试听（合成后用扬声器播放） ----
+    private val _preview = MutableStateFlow<TtsPreviewState>(TtsPreviewState.Idle)
+    val preview: StateFlow<TtsPreviewState> = _preview.asStateFlow()
+
+    @Volatile private var previewTrack: AudioTrack? = null
+    private var previewJob: Job? = null
+
+    /** 合成 [text] 并从扬声器播放，用来试听音色/效果。 */
+    fun previewText(text: String) {
+        val t = text.trim()
+        if (t.isEmpty()) {
+            _preview.value = TtsPreviewState.Error("请先输入试听文本")
+            return
+        }
+        stopPreview()
+        _preview.value = TtsPreviewState.Synthesizing
+        val out = ByteArrayOutputStream()
+        var sr = 24_000
+        var ch = 1
+        val sink = object : PcmSink {
+            override fun onFormat(sampleRate: Int, channels: Int) {
+                sr = sampleRate.coerceAtLeast(8_000)
+                ch = channels.coerceAtLeast(1)
+            }
+            override fun onPcm(chunk: ByteArray) { out.write(chunk) }
+            override fun onDone() { startPlayback(out.toByteArray(), sr, ch) }
+            override fun onError(message: String) { _preview.value = TtsPreviewState.Error(message) }
+        }
+        aiTts.synthesize(TtsRequest(t), sink)
+    }
+
+    private fun startPlayback(pcm: ByteArray, sampleRate: Int, channels: Int) {
+        if (pcm.isEmpty()) {
+            _preview.value = TtsPreviewState.Error("未获取到音频")
+            return
+        }
+        previewJob = viewModelScope.launch(Dispatchers.IO) {
+            val chMask = if (channels >= 2) AudioFormat.CHANNEL_OUT_STEREO else AudioFormat.CHANNEL_OUT_MONO
+            val minBuf = AudioTrack.getMinBufferSize(sampleRate, chMask, AudioFormat.ENCODING_PCM_16BIT)
+            val track = AudioTrack(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build(),
+                AudioFormat.Builder()
+                    .setSampleRate(sampleRate)
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setChannelMask(chMask)
+                    .build(),
+                maxOf(minBuf, sampleRate * channels * 2),
+                AudioTrack.MODE_STREAM,
+                AudioManager.AUDIO_SESSION_ID_GENERATE
+            )
+            previewTrack = track
+            _preview.value = TtsPreviewState.Playing
+            try {
+                track.play()
+                track.write(pcm, 0, pcm.size)
+                val durationMs = pcm.size.toLong() * 1000 / (sampleRate.toLong() * channels * 2)
+                delay(durationMs + 300)
+            } finally {
+                runCatching { track.stop() }
+                runCatching { track.release() }
+                previewTrack = null
+                if (_preview.value is TtsPreviewState.Playing) _preview.value = TtsPreviewState.Idle
+            }
+        }
+    }
+
+    /** 停止试听并释放播放资源。 */
+    fun stopPreview() {
+        previewJob?.cancel()
+        previewJob = null
+        previewTrack?.let { runCatching { it.stop() }; runCatching { it.release() } }
+        previewTrack = null
+        aiTts.cancel()
+        if (_preview.value !is TtsPreviewState.Error) _preview.value = TtsPreviewState.Idle
+    }
+
+    override fun onCleared() {
+        stopPreview()
     }
 }
