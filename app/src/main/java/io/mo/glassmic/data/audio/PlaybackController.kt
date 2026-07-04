@@ -3,6 +3,9 @@ package io.mo.glassmic.data.audio
 import io.mo.glassmic.audio.FileAudioSource
 import io.mo.glassmic.audio.SharedPcmPublisher
 import io.mo.glassmic.audio.SilenceSource
+import io.mo.glassmic.audio.TtsAudioSource
+import io.mo.glassmic.audio.tts.TtsRequest
+import io.mo.glassmic.audio.tts.TtsSynthesizerFactory
 import io.mo.glassmic.core.model.SourceType
 import io.mo.glassmic.data.config.ConfigStore
 import io.mo.glassmic.data.db.AudioDao
@@ -28,7 +31,8 @@ class PlaybackController @Inject constructor(
     private val resolver: AudioFileResolver,
     private val configStore: ConfigStore,
     private val runtime: RuntimeStateHolder,
-    private val dao: AudioDao
+    private val dao: AudioDao,
+    private val ttsFactory: TtsSynthesizerFactory
 ) {
 
     /** 设置某个片段为当前虚拟麦克风音源。文件不存在则自动清掉数据库记录并返回 false。 */
@@ -50,6 +54,32 @@ class PlaybackController @Inject constructor(
             it.setCurrentGroupId(clip.groupId)
             it.setCurrentAudioId(clip.id)
         }
+        true
+    }
+
+    /**
+     * 文字转语音 → 虚拟麦克风：把 [text] 合成为语音喂给目标 App。
+     * 测试语音识别/语音输入类场景比准备音频文件方便。文件不变，切换为 TTS 音源。
+     */
+    suspend fun speakTts(text: String): Boolean = withContext(Dispatchers.IO) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return@withContext false
+        val ttsCfg = configStore.current().tts
+        val synth = ttsFactory.current()
+        val req = TtsRequest(
+            text = trimmed,
+            rate = ttsCfg.speechRate.takeIf { it > 0f } ?: 1f,
+            pitch = ttsCfg.pitch.takeIf { it > 0f } ?: 1f,
+            voice = ttsCfg.voice
+        )
+        publisher.setSource(TtsAudioSource(synth, req))
+        publisher.setPaused(false)
+        // TTS 不是文件片段，清空持久化选中避免重启后误恢复
+        configStore.update {
+            it.setCurrentGroupId("")
+            it.setCurrentAudioId("")
+        }
+        GlassLog.b("Playback") { "TTS 播报: ${trimmed.take(20)}" }
         true
     }
 

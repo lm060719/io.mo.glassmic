@@ -31,6 +31,31 @@ message AppConfig {
 
   // App 选择页是否显示系统应用
   bool show_system_apps = 15;
+
+  // 文字转语音（TTS → 虚拟麦克风）配置
+  TtsConfig tts = 16;
+}
+
+// TTS 配置：系统 TTS 参数 + 预留的 AI TTS 接口
+message TtsConfig {
+  // 系统 TTS 参数
+  float speech_rate = 1;   // 语速，0 视为 1.0
+  float pitch = 2;         // 音调，0 视为 1.0
+  string voice = 3;        // 系统语音 / locale（如 zh-CN），空则用引擎默认
+
+  // AI TTS（在线合成）——暂时隐藏，仅预留接口与配置
+  TtsAiConfig ai = 4;
+}
+
+// AI TTS 接入配置。留作扩展：接入任意在线 TTS（OpenAI / Azure / 火山 等）。
+message TtsAiConfig {
+  bool enabled = 1;        // 是否优先走 AI TTS（关闭则回退系统 TTS）
+  string endpoint = 2;     // 合成接口地址
+  string api_key = 3;      // 鉴权 key
+  string model = 4;        // 模型名
+  string voice = 5;        // 音色名
+  string format = 6;       // 期望返回音频格式：pcm16 / wav / mp3
+  int32 sample_rate = 7;   // 若已知返回采样率（Hz），0 表示未知
 }
 
 enum ScopeMode {

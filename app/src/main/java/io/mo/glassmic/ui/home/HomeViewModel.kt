@@ -84,6 +84,7 @@ class HomeViewModel @Inject constructor(
                 SourceType.FILE -> clip?.displayName ?: rt.currentAudioId ?: "—"
                 SourceType.REAL_MIC -> "真实麦克风"
                 SourceType.SILENCE -> "静音"
+                SourceType.TTS -> "文字转语音"
             },
             groupName = group?.let { "${it.emoji} ${it.name}" } ?: "—",
             policyLabel = when (cfg.playbackPolicy) {

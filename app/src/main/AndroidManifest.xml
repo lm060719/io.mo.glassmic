@@ -27,9 +27,16 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
 
+    <!-- 仅供可选的「AI 在线 TTS」使用；系统 TTS 与虚拟麦克风核心功能均离线，不联网 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
+        </intent>
+        <!-- 文字转语音引擎（TTS → 虚拟麦克风） -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
     </queries>
 

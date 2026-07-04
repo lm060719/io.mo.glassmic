@@ -246,6 +246,39 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    // ============ 文字转语音（TTS） ============
+    fun setTtsSpeechRate(v: Float) = viewModelScope.launch {
+        configStore.update { it.setTts(it.tts.toBuilder().setSpeechRate(v.coerceIn(0.5f, 2f))) }
+    }
+
+    fun setTtsPitch(v: Float) = viewModelScope.launch {
+        configStore.update { it.setTts(it.tts.toBuilder().setPitch(v.coerceIn(0.5f, 2f))) }
+    }
+
+    fun setTtsVoice(v: String) = viewModelScope.launch {
+        configStore.update { it.setTts(it.tts.toBuilder().setVoice(v)) }
+    }
+
+    /** 解锁/隐藏调试面板（当前用于显露隐藏的 AI TTS 配置区）。 */
+    fun setDebugPanelUnlocked(v: Boolean) = viewModelScope.launch {
+        configStore.update { it.setDebugPanelUnlocked(v) }
+    }
+
+    // ---- AI TTS（隐藏配置区）----
+    private fun updateAi(transform: (io.mo.glassmic.proto.TtsAiConfig.Builder) -> Unit) =
+        viewModelScope.launch {
+            configStore.update {
+                it.setTts(it.tts.toBuilder().setAi(it.tts.ai.toBuilder().also(transform)))
+            }
+        }
+
+    fun setTtsAiEnabled(v: Boolean) = updateAi { it.enabled = v }
+    fun setTtsAiEndpoint(v: String) = updateAi { it.endpoint = v }
+    fun setTtsAiApiKey(v: String) = updateAi { it.apiKey = v }
+    fun setTtsAiModel(v: String) = updateAi { it.model = v }
+    fun setTtsAiVoice(v: String) = updateAi { it.voice = v }
+    fun setTtsAiFormat(v: String) = updateAi { it.format = v }
+
     // ============ 管线自检 + 统计 ============
     fun runPipelineProbe() {
         if (_probing.value) return

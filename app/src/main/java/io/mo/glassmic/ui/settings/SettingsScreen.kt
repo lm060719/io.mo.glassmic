@@ -30,6 +30,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -44,8 +45,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -309,9 +312,44 @@ fun SettingsScreen(
                 }
             } }
 
+            // 文字转语音 AI 接入配置——暂时隐藏，仅在解锁调试面板后可见。
+            // 系统 TTS 无需配置即可用；此区域为后续 AI TTS 预留接口。
+            if (cfg.debugPanelUnlocked) {
+                item { Section("文字转语音 · AI 接入（隐藏）") {
+                    Text(
+                        "系统 TTS 无需配置即可用；此处为在线 AI TTS 预留接口。填好并开启后，" +
+                            "悬浮窗「文字转语音」将优先走 AI 合成，否则回退系统 TTS。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                    SwitchRow(
+                        label = "启用 AI TTS",
+                        checked = cfg.tts.ai.enabled,
+                        onChange = vm::setTtsAiEnabled
+                    )
+                    ConfigTextField("接口地址 endpoint", cfg.tts.ai.endpoint, vm::setTtsAiEndpoint)
+                    ConfigTextField("API Key", cfg.tts.ai.apiKey, vm::setTtsAiApiKey)
+                    ConfigTextField("模型 model", cfg.tts.ai.model, vm::setTtsAiModel)
+                    ConfigTextField("音色 voice", cfg.tts.ai.voice, vm::setTtsAiVoice)
+                    ConfigTextField("返回格式 format（pcm16 / wav）", cfg.tts.ai.format, vm::setTtsAiFormat)
+                } }
+            }
+
             item { Section(stringResource(R.string.settings_section_about)) {
-                InfoRow(stringResource(R.string.settings_about_version),
-                    "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+                // 连点版本号 7 次解锁隐藏的「文字转语音 AI」配置区
+                var versionTaps by remember { mutableStateOf(0) }
+                InfoRow(
+                    stringResource(R.string.settings_about_version),
+                    "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+                ) {
+                    if (cfg.debugPanelUnlocked) return@InfoRow
+                    versionTaps++
+                    if (versionTaps >= 7) {
+                        vm.setDebugPanelUnlocked(true)
+                        scope.launch { snackbar.showSnackbar("已解锁隐藏配置：文字转语音 AI") }
+                    }
+                }
                 InfoRow(stringResource(R.string.settings_about_license), "GPL-3.0")
                 InfoRow(stringResource(R.string.settings_about_repo), "github.com/lm060719/io.mo.glassmic")
             } }
@@ -396,10 +434,25 @@ private fun ActionRow(label: String, busy: Boolean = false, onClick: () -> Unit)
 }
 
 @Composable
-private fun InfoRow(label: String, value: String) {
+private fun ConfigTextField(label: String, initial: String, onCommit: (String) -> Unit) {
+    var value by remember(initial) { mutableStateOf(initial) }
+    OutlinedTextField(
+        value = value,
+        onValueChange = { value = it; onCommit(it) },
+        label = { Text(label) },
+        singleLine = true,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+    )
+}
+
+@Composable
+private fun InfoRow(label: String, value: String, onClick: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

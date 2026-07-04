@@ -1,6 +1,6 @@
 package io.mo.glassmic.core.model
 
-enum class SourceType { REAL_MIC, FILE, SILENCE }
+enum class SourceType { REAL_MIC, FILE, SILENCE, TTS }
 
 enum class ScopeMode { GLOBAL, WHITELIST, BLACKLIST }
 

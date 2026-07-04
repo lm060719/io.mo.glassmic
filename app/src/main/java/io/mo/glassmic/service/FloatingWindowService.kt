@@ -146,6 +146,8 @@ class FloatingWindowService : LifecycleService() {
                     onOpenMenu = { setMode(FloatMode.MENU) },
                     onCollapse = { setMode(FloatMode.BALL) },
                     onSelectClip = { clipId -> onSelectClip(clipId) },
+                    onOpenTts = { setMode(FloatMode.TTS) },
+                    onSpeakTts = { text -> onSpeakTts(text) },
                     onDragBy = { dx, dy -> onDragBy(dx, dy) },
                     onDragEnd = { onDragEnd() },
                 )
@@ -165,6 +167,14 @@ class FloatingWindowService : LifecycleService() {
             val ok = playback.setCurrentClip(clipId)
             if (ok) setMode(FloatMode.MINI_BAR)
             else GlassLog.b("Float") { "选中片段失败: $clipId" }
+        }
+    }
+
+    private fun onSpeakTts(text: String) {
+        lifecycleScope.launch {
+            val ok = playback.speakTts(text)
+            if (!ok) GlassLog.b("Float") { "TTS 播报失败（文本为空或引擎不可用）" }
+            // 面板保留，方便连续播报；不主动收起
         }
     }
 
@@ -189,8 +199,27 @@ class FloatingWindowService : LifecycleService() {
 
     private fun setMode(mode: FloatMode) {
         modeFlow.value = mode
-        // 展开态（迷你条/菜单）确保不超出屏幕右边
+        // TTS 面板需要输入法焦点，其它态保持不可聚焦（不拦截触摸）
+        setWindowFocusable(mode == FloatMode.TTS)
+        // 展开态（迷你条/菜单/TTS）确保不超出屏幕右边
         if (mode != FloatMode.BALL) clampExpandedX()
+    }
+
+    /**
+     * 切换悬浮窗是否可获得焦点。
+     * TTS 输入需要软键盘 → 去掉 FLAG_NOT_FOCUSABLE；其它态恢复不可聚焦，避免拦截系统触摸。
+     */
+    private fun setWindowFocusable(focusable: Boolean) {
+        val lp = params ?: return
+        val h = host ?: return
+        lp.flags = if (focusable) {
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        } else {
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        }
+        lp.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        runCatching { windowManager?.updateViewLayout(h.view, lp) }
     }
 
     /** 边界兜底：把悬浮球约束在屏幕内，但不贴边，保留自由悬停位置。 */

@@ -91,7 +91,8 @@ object NativeAAudioHook {
                     val src = XBridge.resolveSource(ctx, callerPackage)
                     val decisionCode = when (src) {
                         SourceType.REAL_MIC -> 0
-                        SourceType.FILE     -> 1
+                        // FILE / TTS 都是"注入 PCM"（app 侧已把 TTS 归一为 FILE，这里仅为穷尽分支兜底）
+                        SourceType.FILE, SourceType.TTS -> 1
                         SourceType.SILENCE  -> 2
                     }
                     nativeSetDecision(decisionCode)

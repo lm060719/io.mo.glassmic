@@ -4,6 +4,18 @@
 
 GlassMic — open-source LSPosed virtual microphone module for rooted Android devices. Intercepts AudioRecord/AAudio calls and fills them from imported audio files.
 
+## Code search
+
+**Prefer the `codebase-memory` MCP knowledge graph over grep/ripgrep for structural questions.** This repo is already indexed. Graph queries return precise results in ~500 tokens where grep would burn tens of thousands.
+
+- Who calls X / what does X call → `trace_path` (inbound / outbound / both)
+- Find symbols by name → `search_graph(name_pattern=...)`
+- Read a symbol's source → `get_code_snippet(qualified_name=...)`
+- Architecture / modules at a glance → `get_architecture`
+- Impact of local edits → `detect_changes`
+
+Fall back to Grep/Glob only for plain-text matches (comments, strings, resources) or when the graph lacks the answer. The index is a snapshot stored outside the repo (`~/.cache/codebase-memory-mcp/`), so **re-index after changing code** (`index_repository`, `fast` mode is fine); a new conversation reuses the existing index without re-indexing.
+
 ## Build
 
 ```bash

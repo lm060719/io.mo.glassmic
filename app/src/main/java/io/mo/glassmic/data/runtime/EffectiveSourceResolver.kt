@@ -44,8 +44,13 @@ class EffectiveSourceResolver @Inject constructor(
         // 7. 前台服务 / 运行态必须仍然开启
         val rt = runtime.value
         if (!rt.enabled) return SourceType.REAL_MIC
-        // 8. 当前运行态决定的音源
-        return rt.currentSourceType
+        // 8. 当前运行态决定的音源。
+        //    TTS 与 FILE 一样都是"从 PCM 管线注入"，对 Xposed 侧统一按 FILE 处理，
+        //    使 hook 端保持 REAL_MIC / FILE / SILENCE 三态契约不变。
+        return when (rt.currentSourceType) {
+            SourceType.TTS -> SourceType.FILE
+            else -> rt.currentSourceType
+        }
     }
 
     /** 给 UI / 通知/ 悬浮窗显示用——和 resolve() 不同，这里返回是否模块整体在运行 */

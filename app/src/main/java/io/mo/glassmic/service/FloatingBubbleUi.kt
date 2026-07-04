@@ -21,6 +21,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -52,7 +55,7 @@ import java.io.File
 
 // ============ 悬浮窗数据模型（不直接暴露 Room 实体）============
 
-enum class FloatMode { BALL, MINI_BAR, MENU }
+enum class FloatMode { BALL, MINI_BAR, MENU, TTS }
 
 data class FloatGroupItem(val id: String, val emoji: String, val name: String)
 data class FloatClipItem(val id: String, val name: String, val isCurrent: Boolean)
@@ -87,6 +90,8 @@ fun FloatingBubbleRoot(
     onOpenMenu: () -> Unit,
     onCollapse: () -> Unit,
     onSelectClip: (String) -> Unit,
+    onOpenTts: () -> Unit,
+    onSpeakTts: (String) -> Unit,
     onDragBy: (Float, Float) -> Unit,
     onDragEnd: () -> Unit,
 ) {
@@ -114,6 +119,11 @@ fun FloatingBubbleRoot(
             groups = groups,
             clipsProvider = clipsProvider,
             onSelectClip = onSelectClip,
+            onOpenTts = onOpenTts,
+            onCollapse = onCollapse
+        )
+        FloatMode.TTS -> TtsPanel(
+            onSpeak = onSpeakTts,
             onCollapse = onCollapse
         )
     }
@@ -258,6 +268,7 @@ private fun SelectMenu(
     groups: List<FloatGroupItem>,
     clipsProvider: (String) -> Flow<List<FloatClipItem>>,
     onSelectClip: (String) -> Unit,
+    onOpenTts: () -> Unit,
     onCollapse: () -> Unit,
 ) {
     var selectedGroup by remember { mutableStateOf<FloatGroupItem?>(null) }
@@ -299,6 +310,8 @@ private fun SelectMenu(
 
         val group = selectedGroup
         if (group == null) {
+            // 文字转语音入口：输入文字实时合成喂给目标 App
+            MenuRow(text = "🗣  文字转语音（TTS）", trailing = "›", onClick = onOpenTts)
             if (groups.isEmpty()) {
                 EmptyHint("还没有音频分组")
             } else {
@@ -326,6 +339,75 @@ private fun SelectMenu(
                     }
                 }
             }
+        }
+    }
+}
+
+// ============ 文字转语音面板 ============
+@Composable
+private fun TtsPanel(
+    onSpeak: (String) -> Unit,
+    onCollapse: () -> Unit,
+) {
+    var text by remember { mutableStateOf("") }
+    Column(
+        modifier = Modifier
+            .widthIn(min = 260.dp, max = 320.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(PanelBg)
+            .padding(14.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "🗣 文字转语音", color = OnDark, fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)
+            )
+            Text(
+                "收起", color = OnDarkDim, fontSize = 12.sp,
+                modifier = Modifier.clickable(onClick = onCollapse)
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 10.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0x22FFFFFF))
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+        ) {
+            BasicTextField(
+                value = text,
+                onValueChange = { text = it },
+                textStyle = TextStyle(color = OnDark, fontSize = 14.sp),
+                cursorBrush = SolidColor(Accent),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                decorationBox = { inner ->
+                    if (text.isEmpty()) {
+                        Text("输入要合成的文字", color = OnDarkDim, fontSize = 14.sp)
+                    }
+                    inner()
+                }
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "播报",
+                color = OnDark,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (text.isBlank()) Color(0x33FFFFFF) else Accent)
+                    .clickable(enabled = text.isNotBlank()) {
+                        onSpeak(text.trim())
+                        text = ""
+                    }
+                    .padding(horizontal = 18.dp, vertical = 8.dp)
+            )
         }
     }
 }
