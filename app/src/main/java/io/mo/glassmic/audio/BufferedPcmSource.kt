@@ -32,6 +32,13 @@ class BufferedPcmSource(private val pcm: ByteArray) : AudioSourceProvider {
     /** 重播：回到开头。 */
     override fun reset() { pos = 0 }
 
+    /** 跳转到指定毫秒，按帧对齐并夹在有效范围内。 */
+    fun seekTo(positionMs: Long) {
+        val bytePos = positionMs.coerceAtLeast(0L) * MASTER_SAMPLE_RATE * BYTES_PER_FRAME / 1000
+        val aligned = bytePos - (bytePos % BYTES_PER_FRAME)
+        pos = aligned.coerceIn(0L, pcm.size.toLong()).toInt()
+    }
+
     private companion object {
         const val MASTER_SAMPLE_RATE = 48_000
         const val BYTES_PER_FRAME = 2   // 48k 单声道 PCM16

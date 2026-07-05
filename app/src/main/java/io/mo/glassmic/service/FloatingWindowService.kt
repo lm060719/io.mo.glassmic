@@ -152,6 +152,12 @@ class FloatingWindowService : LifecycleService() {
                     ttsReady = ttsGen == PlaybackController.TtsGen.READY,
                     onGenerateTts = { text -> onGenerateTts(text) },
                     onPlayTts = { onPlayTts() },
+                    ttsProgressBarEnabled = cfg.tts.progressBarEnabled,
+                    ttsActive = rt.currentSourceType == SourceType.TTS,
+                    onOpenTtsSettings = { setMode(FloatMode.TTS_SETTINGS) },
+                    onToggleTtsProgressBar = { enabled -> onToggleTtsProgressBar(enabled) },
+                    onSeekTts = { frac -> onSeek(frac, rt.durationMs) },
+                    onCloseTtsSettings = { setMode(FloatMode.TTS) },
                     onDragBy = { dx, dy -> onDragBy(dx, dy) },
                     onDragEnd = { onDragEnd() },
                 )
@@ -185,6 +191,14 @@ class FloatingWindowService : LifecycleService() {
         lifecycleScope.launch {
             val ok = playback.playGeneratedTts()
             if (!ok) GlassLog.b("Float") { "TTS 播放失败（尚未生成）" }
+        }
+    }
+
+    private fun onToggleTtsProgressBar(enabled: Boolean) {
+        lifecycleScope.launch {
+            configStore.update {
+                it.setTts(it.tts.toBuilder().setProgressBarEnabled(enabled).build())
+            }
         }
     }
 

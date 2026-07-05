@@ -28,8 +28,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -55,7 +57,7 @@ import java.io.File
 
 // ============ 悬浮窗数据模型（不直接暴露 Room 实体）============
 
-enum class FloatMode { BALL, MINI_BAR, MENU, TTS }
+enum class FloatMode { BALL, MINI_BAR, MENU, TTS, TTS_SETTINGS }
 
 data class FloatGroupItem(val id: String, val emoji: String, val name: String)
 data class FloatClipItem(val id: String, val name: String, val isCurrent: Boolean)
@@ -95,6 +97,12 @@ fun FloatingBubbleRoot(
     ttsReady: Boolean,
     onGenerateTts: (String) -> Unit,
     onPlayTts: () -> Unit,
+    ttsProgressBarEnabled: Boolean,
+    ttsActive: Boolean,
+    onOpenTtsSettings: () -> Unit,
+    onToggleTtsProgressBar: (Boolean) -> Unit,
+    onSeekTts: (Float) -> Unit,
+    onCloseTtsSettings: () -> Unit,
     onDragBy: (Float, Float) -> Unit,
     onDragEnd: () -> Unit,
 ) {
@@ -135,6 +143,19 @@ fun FloatingBubbleRoot(
             onGenerate = onGenerateTts,
             onPlay = onPlayTts,
             onCollapse = onCollapse,
+            progressBarEnabled = ttsProgressBarEnabled,
+            ttsActive = ttsActive,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            onSeek = onSeekTts,
+            onOpenSettings = onOpenTtsSettings,
+            onDragBy = onDragBy,
+            onDragEnd = onDragEnd
+        )
+        FloatMode.TTS_SETTINGS -> TtsSettingsPanel(
+            progressBarEnabled = ttsProgressBarEnabled,
+            onToggleProgressBar = onToggleTtsProgressBar,
+            onBack = onCloseTtsSettings,
             onDragBy = onDragBy,
             onDragEnd = onDragEnd
         )
@@ -385,6 +406,12 @@ private fun TtsPanel(
     onGenerate: (String) -> Unit,
     onPlay: () -> Unit,
     onCollapse: () -> Unit,
+    progressBarEnabled: Boolean,
+    ttsActive: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    onSeek: (Float) -> Unit,
+    onOpenSettings: () -> Unit,
     onDragBy: (Float, Float) -> Unit,
     onDragEnd: () -> Unit,
 ) {
@@ -404,6 +431,17 @@ private fun TtsPanel(
                 "🗣 文字转语音", color = OnDark, fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)
             )
+            Icon(
+                imageVector = Icons.Filled.Settings,
+                contentDescription = "设置",
+                tint = OnDarkDim,
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onOpenSettings)
+                    .padding(3.dp)
+            )
+            Spacer(Modifier.width(10.dp))
             Text(
                 "收起", color = OnDarkDim, fontSize = 12.sp,
                 modifier = Modifier.clickable(onClick = onCollapse)
@@ -466,6 +504,74 @@ private fun TtsPanel(
             color = OnDarkDim, fontSize = 11.sp,
             modifier = Modifier.padding(top = 8.dp)
         )
+
+        // 进度条：设置里开启后，生成/播放后可拖动控制播放进度
+        if (progressBarEnabled && (ready || ttsActive)) {
+            val hasDuration = ttsActive && durationMs > 0
+            Slider(
+                value = if (hasDuration) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f,
+                onValueChange = onSeek,
+                enabled = hasDuration,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(formatMs(if (hasDuration) positionMs else 0L), color = OnDarkDim, fontSize = 11.sp)
+                Text(formatMs(if (hasDuration) durationMs else 0L), color = OnDarkDim, fontSize = 11.sp)
+            }
+        }
+    }
+}
+
+// ============ 文字转语音设置面板 ============
+@Composable
+private fun TtsSettingsPanel(
+    progressBarEnabled: Boolean,
+    onToggleProgressBar: (Boolean) -> Unit,
+    onBack: () -> Unit,
+    onDragBy: (Float, Float) -> Unit,
+    onDragEnd: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .widthIn(min = 260.dp, max = 320.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(PanelBg)
+            .padding(14.dp)
+    ) {
+        // 标题栏（兼作拖动手柄）
+        Row(
+            modifier = Modifier.fillMaxWidth().dragHandle(onDragBy, onDragEnd),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = OnDark,
+                modifier = Modifier.size(22.dp).clip(CircleShape)
+                    .clickable(onClick = onBack).padding(2.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "文字转语音设置", color = OnDark, fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)
+            )
+        }
+        // 进度条开关
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("播放进度条", color = OnDark, fontSize = 14.sp)
+                Text(
+                    "生成后显示可拖动的进度条控制播放",
+                    color = OnDarkDim, fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            Switch(
+                checked = progressBarEnabled,
+                onCheckedChange = onToggleProgressBar
+            )
+        }
     }
 }
 

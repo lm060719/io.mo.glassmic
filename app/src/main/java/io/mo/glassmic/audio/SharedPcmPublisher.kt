@@ -127,10 +127,13 @@ class SharedPcmPublisher @Inject constructor(
         GlassLog.b("Publisher") { "paused=$value" }
     }
 
-    /** 把当前 FileAudioSource 跳转到指定毫秒。其他类型源忽略。 */
+    /** 把当前源跳转到指定毫秒。仅 FileAudioSource / BufferedPcmSource 支持，其他类型忽略。 */
     suspend fun seekCurrent(positionMs: Long) {
-        val src = currentSource
-        if (src is FileAudioSource) src.seekTo(positionMs)
+        when (val src = currentSource) {
+            is FileAudioSource -> src.seekTo(positionMs)
+            is BufferedPcmSource -> src.seekTo(positionMs)
+            else -> return
+        }
         runtime.setPosition(positionMs)
     }
 

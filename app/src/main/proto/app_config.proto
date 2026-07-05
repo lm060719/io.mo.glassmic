@@ -45,6 +45,9 @@ message TtsConfig {
 
   // AI TTS（在线合成）——暂时隐藏，仅预留接口与配置
   TtsAiConfig ai = 4;
+
+  // 悬浮窗 TTS 面板：生成后显示可拖动的播放进度条
+  bool progress_bar_enabled = 5;
 }
 
 // AI TTS 接入配置。兼容 OpenAI / Gemini 接口协议，支持自定义 url 与模型。
