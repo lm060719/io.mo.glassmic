@@ -116,22 +116,42 @@ fun FloatingBubbleRoot(
             onTogglePause = onTogglePause,
             onSeek = onSeek,
             onOpenMenu = onOpenMenu,
-            onCollapse = onCollapse
+            onCollapse = onCollapse,
+            onDragBy = onDragBy,
+            onDragEnd = onDragEnd
         )
         FloatMode.MENU -> SelectMenu(
             groups = groups,
             clipsProvider = clipsProvider,
             onSelectClip = onSelectClip,
             onOpenTts = onOpenTts,
-            onCollapse = onCollapse
+            onCollapse = onCollapse,
+            onDragBy = onDragBy,
+            onDragEnd = onDragEnd
         )
         FloatMode.TTS -> TtsPanel(
             generating = ttsGenerating,
             ready = ttsReady,
             onGenerate = onGenerateTts,
             onPlay = onPlayTts,
-            onCollapse = onCollapse
+            onCollapse = onCollapse,
+            onDragBy = onDragBy,
+            onDragEnd = onDragEnd
         )
+    }
+}
+
+/**
+ * 拖动手柄：贴到展开态面板的标题栏上，让面板在展开时也能整体拖动。
+ * 标题栏里的按钮/「收起」等子元素自身 clickable，会优先消费点击，不影响拖动空白处。
+ */
+private fun Modifier.dragHandle(
+    onDragBy: (Float, Float) -> Unit,
+    onDragEnd: () -> Unit,
+): Modifier = this.pointerInput(Unit) {
+    detectDragGestures(onDragEnd = { onDragEnd() }) { change, drag ->
+        change.consume()
+        onDragBy(drag.x, drag.y)
     }
 }
 
@@ -202,6 +222,8 @@ private fun MiniBar(
     onSeek: (Float) -> Unit,
     onOpenMenu: () -> Unit,
     onCollapse: () -> Unit,
+    onDragBy: (Float, Float) -> Unit,
+    onDragEnd: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -210,7 +232,10 @@ private fun MiniBar(
             .background(PanelBg)
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth().dragHandle(onDragBy, onDragEnd),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
                 text = currentName ?: "GlassMic",
                 color = OnDark,
@@ -276,6 +301,8 @@ private fun SelectMenu(
     onSelectClip: (String) -> Unit,
     onOpenTts: () -> Unit,
     onCollapse: () -> Unit,
+    onDragBy: (Float, Float) -> Unit,
+    onDragEnd: () -> Unit,
 ) {
     var selectedGroup by remember { mutableStateOf<FloatGroupItem?>(null) }
 
@@ -287,10 +314,11 @@ private fun SelectMenu(
             .background(PanelBg)
             .padding(vertical = 8.dp)
     ) {
-        // 标题栏
+        // 标题栏（兼作拖动手柄）
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .dragHandle(onDragBy, onDragEnd)
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -357,6 +385,8 @@ private fun TtsPanel(
     onGenerate: (String) -> Unit,
     onPlay: () -> Unit,
     onCollapse: () -> Unit,
+    onDragBy: (Float, Float) -> Unit,
+    onDragEnd: () -> Unit,
 ) {
     var text by remember { mutableStateOf("") }
     Column(
@@ -366,7 +396,10 @@ private fun TtsPanel(
             .background(PanelBg)
             .padding(14.dp)
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth().dragHandle(onDragBy, onDragEnd),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
                 "🗣 文字转语音", color = OnDark, fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)

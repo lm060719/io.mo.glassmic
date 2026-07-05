@@ -223,7 +223,10 @@ class FloatingWindowService : LifecycleService() {
         val lp = params ?: return
         val h = host ?: return
         lp.flags = if (focusable) {
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            // 可聚焦（软键盘）但仍放行窗口外的触摸：FLAG_NOT_FOCUSABLE 会隐式带上
+            // FLAG_NOT_TOUCH_MODAL，去掉它后必须显式补回，否则整屏触摸都会被悬浮窗吞掉
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         } else {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS

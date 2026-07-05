@@ -184,19 +184,21 @@ private fun StatusHeroCard(
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            // 打开悬浮窗开关：仅在 GlassMic（功能总开关）开启时显示
+            if (state.running) {
+                Spacer(modifier = Modifier.height(12.dp))
 
-            // 打开悬浮窗开关
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = stringResource(R.string.home_open_floating),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f)
-                )
-                Switch(
-                    checked = state.floatingWindowVisible,
-                    onCheckedChange = { onToggleFloating() }
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = stringResource(R.string.home_open_floating),
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Switch(
+                        checked = state.floatingWindowVisible,
+                        onCheckedChange = { onToggleFloating() }
+                    )
+                }
             }
 
             if (state.hasFileSource) {
