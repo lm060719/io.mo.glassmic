@@ -1,5 +1,6 @@
 package io.mo.glassmic.audio
 
+import io.mo.glassmic.core.audio.ComfortNoise
 import io.mo.glassmic.core.model.SourceType
 import java.nio.ByteBuffer
 
@@ -28,6 +29,21 @@ object SilenceSource : AudioSourceProvider {
     override suspend fun read(out: ByteBuffer, sampleRate: Int, channels: Int): Int {
         val n = out.remaining()
         repeat(n) { out.put(0) }
+        return n
+    }
+}
+
+/**
+ * 舒适噪声源——对外仍是"静音"语义，但输出极低电平的本底噪声，
+ * 避免下游 App（如微信语音输入）把纯 0 判定为"无音频输入"而中断录音。
+ * 用于暂停 / idle 时保持虚拟麦克风"存活"。
+ */
+object ComfortNoiseSource : AudioSourceProvider {
+    override val type = SourceType.SILENCE
+
+    override suspend fun read(out: ByteBuffer, sampleRate: Int, channels: Int): Int {
+        val n = out.remaining()
+        ComfortNoise.putPcm16(out, n)
         return n
     }
 }

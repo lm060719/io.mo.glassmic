@@ -223,8 +223,9 @@ class SharedPcmPublisher @Inject constructor(
                 val ch = MASTER_CHANNELS
                 val bytesPerSec = sr.toLong() * ch * BYTES_PER_SAMPLE
 
-                // 暂停 → 读 SilenceSource（不动真实源的位置）；其它情况读当前源
-                val readSource = if (paused) SilenceSource else currentSource
+                // 暂停 → 读舒适噪声源（不动真实源的位置，但保持下游有本底信号，避免录音中断）；
+                // 其它情况读当前源
+                val readSource = if (paused) ComfortNoiseSource else currentSource
 
                 val n = runCatching { readSource.read(frame, sr, ch) }.getOrElse {
                     watchdog.onAudioEngineFailure()

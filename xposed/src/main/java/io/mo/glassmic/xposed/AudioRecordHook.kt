@@ -5,6 +5,7 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.util.Log
 import io.github.libxposed.api.XposedInterface
+import io.mo.glassmic.core.audio.ComfortNoise
 import io.mo.glassmic.core.model.SourceType
 import java.lang.reflect.Method
 import java.nio.ByteBuffer
@@ -133,7 +134,12 @@ object AudioRecordHook {
 
         val record = chain.getThisObject() as AudioRecord
         if (src == SourceType.SILENCE) {
-            java.util.Arrays.fill(buf, offset, offset + size, 0.toByte())
+            // 注入舒适噪声而非纯 0，避免下游 App 把静音判定为"无输入"而中断录音
+            if (record.audioFormat == AudioFormat.ENCODING_PCM_FLOAT) {
+                ComfortNoise.fillFloatBytes(buf, offset, size)
+            } else {
+                ComfortNoise.fillBytes(buf, offset, size)
+            }
             accumulate(appCtx, pkg, size, record.sampleRate, record.channelCount)
             return HookDecision.Replace(size)
         }
@@ -161,7 +167,7 @@ object AudioRecordHook {
 
         val record = chain.getThisObject() as AudioRecord
         if (src == SourceType.SILENCE) {
-            java.util.Arrays.fill(buf, offset, offset + sizeInShorts, 0.toShort())
+            ComfortNoise.fillShorts(buf, offset, sizeInShorts)
             accumulate(appCtx, pkg, sizeInShorts * 2, record.sampleRate, record.channelCount)
             return HookDecision.Replace(sizeInShorts)
         }
@@ -191,7 +197,7 @@ object AudioRecordHook {
 
         val record = chain.getThisObject() as AudioRecord
         if (src == SourceType.SILENCE) {
-            java.util.Arrays.fill(buf, offset, offset + sizeInFloats, 0f)
+            ComfortNoise.fillFloats(buf, offset, sizeInFloats)
             accumulate(appCtx, pkg, sizeInFloats * 4, record.sampleRate, record.channelCount)
             return HookDecision.Replace(sizeInFloats)
         }
@@ -220,7 +226,11 @@ object AudioRecordHook {
 
         val record = chain.getThisObject() as AudioRecord
         if (src == SourceType.SILENCE) {
-            repeat(size) { buf.put(0.toByte()) }
+            if (record.audioFormat == AudioFormat.ENCODING_PCM_FLOAT) {
+                ComfortNoise.putFloat32(buf, size)
+            } else {
+                ComfortNoise.putPcm16(buf, size)
+            }
             accumulate(appCtx, pkg, size, record.sampleRate, record.channelCount)
             return HookDecision.Replace(size)
         }

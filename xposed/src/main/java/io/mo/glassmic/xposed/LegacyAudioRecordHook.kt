@@ -5,6 +5,7 @@ import android.media.AudioRecord
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedBridge
 import de.robv.android.xposed.XposedHelpers
+import io.mo.glassmic.core.audio.ComfortNoise
 import io.mo.glassmic.core.model.SourceType
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -55,7 +56,7 @@ object LegacyAudioRecordHook {
 
             val record = param.thisObject as AudioRecord
             if (src == SourceType.SILENCE) {
-                java.util.Arrays.fill(buf, offset, offset + size, 0.toByte())
+                ComfortNoise.fillBytes(buf, offset, size)
                 param.result = size
                 XBridge.recordInterception(appCtx, pkg, size, record.sampleRate, record.channelCount)
                 return@hook
@@ -81,7 +82,7 @@ object LegacyAudioRecordHook {
 
             val record = param.thisObject as AudioRecord
             if (src == SourceType.SILENCE) {
-                java.util.Arrays.fill(buf, offset, offset + sizeInShorts, 0.toShort())
+                ComfortNoise.fillShorts(buf, offset, sizeInShorts)
                 param.result = sizeInShorts
                 XBridge.recordInterception(appCtx, pkg, sizeInShorts * 2, record.sampleRate, record.channelCount)
                 return@hook
@@ -113,7 +114,7 @@ object LegacyAudioRecordHook {
 
             val record = param.thisObject as AudioRecord
             if (src == SourceType.SILENCE) {
-                java.util.Arrays.fill(buf, offset, offset + sizeInFloats, 0f)
+                ComfortNoise.fillFloats(buf, offset, sizeInFloats)
                 param.result = sizeInFloats
                 XBridge.recordInterception(appCtx, pkg, sizeInFloats * 4, record.sampleRate, record.channelCount)
                 return@hook
@@ -144,7 +145,7 @@ object LegacyAudioRecordHook {
 
             val record = param.thisObject as AudioRecord
             if (src == SourceType.SILENCE) {
-                repeat(size) { buf.put(0.toByte()) }
+                ComfortNoise.putPcm16(buf, size)
                 param.result = size
                 XBridge.recordInterception(appCtx, pkg, size, record.sampleRate, record.channelCount)
                 return@hook
