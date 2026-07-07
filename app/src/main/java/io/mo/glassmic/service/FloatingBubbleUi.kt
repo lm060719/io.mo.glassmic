@@ -66,6 +66,7 @@ private val PanelBg = Color(0xEE1C1C20)
 private val BallBg = Color(0xCC1C1C20)
 private val Accent = Color(0xFF34C759)
 private val PausedAccent = Color(0xFFFFCC33)
+private val Danger = Color(0xFFFF6B6B)
 private val OnDark = Color.White
 private val OnDarkDim = Color(0xB3FFFFFF)
 
@@ -95,6 +96,7 @@ fun FloatingBubbleRoot(
     onOpenTts: () -> Unit,
     ttsGenerating: Boolean,
     ttsReady: Boolean,
+    ttsFailed: Boolean,
     onGenerateTts: (String) -> Unit,
     onPlayTts: () -> Unit,
     ttsProgressBarEnabled: Boolean,
@@ -140,6 +142,7 @@ fun FloatingBubbleRoot(
         FloatMode.TTS -> TtsPanel(
             generating = ttsGenerating,
             ready = ttsReady,
+            failed = ttsFailed,
             onGenerate = onGenerateTts,
             onPlay = onPlayTts,
             onCollapse = onCollapse,
@@ -403,6 +406,7 @@ private fun SelectMenu(
 private fun TtsPanel(
     generating: Boolean,
     ready: Boolean,
+    failed: Boolean,
     onGenerate: (String) -> Unit,
     onPlay: () -> Unit,
     onCollapse: () -> Unit,
@@ -499,11 +503,14 @@ private fun TtsPanel(
                     .padding(horizontal = 18.dp, vertical = 8.dp)
             )
         }
-        Text(
-            text = if (ready) "已生成，可重复点「播放」喂给目标 App" else "先点「生成」，再点「播放」",
-            color = OnDarkDim, fontSize = 11.sp,
-            modifier = Modifier.padding(top = 8.dp)
-        )
+        // 仅在失败时提示，正常流程不堆文字
+        if (failed) {
+            Text(
+                text = "生成失败，请检查网络或 TTS 引擎后重试",
+                color = Danger, fontSize = 11.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
 
         // 进度条：设置里开启后，生成/播放后可拖动控制播放进度
         if (progressBarEnabled && (ready || ttsActive)) {
@@ -559,14 +566,10 @@ private fun TtsSettingsPanel(
             modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("播放进度条", color = OnDark, fontSize = 14.sp)
-                Text(
-                    "生成后显示可拖动的进度条控制播放",
-                    color = OnDarkDim, fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
+            Text(
+                "播放进度条", color = OnDark, fontSize = 14.sp,
+                modifier = Modifier.weight(1f)
+            )
             Switch(
                 checked = progressBarEnabled,
                 onCheckedChange = onToggleProgressBar

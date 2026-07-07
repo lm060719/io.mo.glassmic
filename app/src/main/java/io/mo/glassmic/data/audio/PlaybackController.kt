@@ -66,7 +66,7 @@ class PlaybackController @Inject constructor(
     }
 
     // ============ 文字转语音（先生成后播放） ============
-    enum class TtsGen { IDLE, GENERATING, READY }
+    enum class TtsGen { IDLE, GENERATING, READY, FAILED }
 
     private val _ttsGen = MutableStateFlow(TtsGen.IDLE)
     /** 生成状态：供悬浮窗决定「播放」按钮是否可用。 */
@@ -98,7 +98,7 @@ class PlaybackController @Inject constructor(
             GlassLog.b("Playback") { "TTS 已生成: ${trimmed.take(20)} (${pcm.size} B)" }
             true
         } else {
-            _ttsGen.value = TtsGen.IDLE
+            _ttsGen.value = TtsGen.FAILED
             GlassLog.b("Playback") { "TTS 生成失败/超时: ${trimmed.take(20)}" }
             false
         }

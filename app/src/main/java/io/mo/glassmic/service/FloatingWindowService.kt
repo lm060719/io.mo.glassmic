@@ -150,6 +150,7 @@ class FloatingWindowService : LifecycleService() {
                     onOpenTts = { setMode(FloatMode.TTS) },
                     ttsGenerating = ttsGen == PlaybackController.TtsGen.GENERATING,
                     ttsReady = ttsGen == PlaybackController.TtsGen.READY,
+                    ttsFailed = ttsGen == PlaybackController.TtsGen.FAILED,
                     onGenerateTts = { text -> onGenerateTts(text) },
                     onPlayTts = { onPlayTts() },
                     ttsProgressBarEnabled = cfg.tts.progressBarEnabled,
