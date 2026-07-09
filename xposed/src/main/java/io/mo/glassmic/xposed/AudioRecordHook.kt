@@ -135,11 +135,11 @@ object AudioRecordHook {
         val record = chain.getThisObject() as AudioRecord
         if (src == SourceType.SILENCE) {
             // 注入舒适噪声而非纯 0，避免下游 App 把静音判定为"无输入"而中断录音
-            if (record.audioFormat == AudioFormat.ENCODING_PCM_FLOAT) {
-                ComfortNoise.fillFloatBytes(buf, offset, size)
-            } else {
-                ComfortNoise.fillBytes(buf, offset, size)
-            }
+            val isFloat = record.audioFormat == AudioFormat.ENCODING_PCM_FLOAT
+            if (isFloat) ComfortNoise.fillFloatBytes(buf, offset, size)
+            else ComfortNoise.fillBytes(buf, offset, size)
+            val bytesPerFrame = record.channelCount.coerceAtLeast(1) * (if (isFloat) 4 else 2)
+            paceSilence(size / bytesPerFrame, record.sampleRate)
             accumulate(appCtx, pkg, size, record.sampleRate, record.channelCount)
             return HookDecision.Replace(size)
         }
@@ -168,6 +168,7 @@ object AudioRecordHook {
         val record = chain.getThisObject() as AudioRecord
         if (src == SourceType.SILENCE) {
             ComfortNoise.fillShorts(buf, offset, sizeInShorts)
+            paceSilence(sizeInShorts / record.channelCount.coerceAtLeast(1), record.sampleRate)
             accumulate(appCtx, pkg, sizeInShorts * 2, record.sampleRate, record.channelCount)
             return HookDecision.Replace(sizeInShorts)
         }
@@ -198,6 +199,7 @@ object AudioRecordHook {
         val record = chain.getThisObject() as AudioRecord
         if (src == SourceType.SILENCE) {
             ComfortNoise.fillFloats(buf, offset, sizeInFloats)
+            paceSilence(sizeInFloats / record.channelCount.coerceAtLeast(1), record.sampleRate)
             accumulate(appCtx, pkg, sizeInFloats * 4, record.sampleRate, record.channelCount)
             return HookDecision.Replace(sizeInFloats)
         }
@@ -226,11 +228,11 @@ object AudioRecordHook {
 
         val record = chain.getThisObject() as AudioRecord
         if (src == SourceType.SILENCE) {
-            if (record.audioFormat == AudioFormat.ENCODING_PCM_FLOAT) {
-                ComfortNoise.putFloat32(buf, size)
-            } else {
-                ComfortNoise.putPcm16(buf, size)
-            }
+            val isFloat = record.audioFormat == AudioFormat.ENCODING_PCM_FLOAT
+            if (isFloat) ComfortNoise.putFloat32(buf, size)
+            else ComfortNoise.putPcm16(buf, size)
+            val bytesPerFrame = record.channelCount.coerceAtLeast(1) * (if (isFloat) 4 else 2)
+            paceSilence(size / bytesPerFrame, record.sampleRate)
             accumulate(appCtx, pkg, size, record.sampleRate, record.channelCount)
             return HookDecision.Replace(size)
         }
@@ -276,4 +278,18 @@ object AudioRecordHook {
 
     private fun validRange(total: Int, offset: Int, size: Int): Boolean =
         offset >= 0 && size >= 0 && offset <= total && size <= total - offset
+
+    /**
+     * SILENCE 路径按实时节流。
+     *
+     * REAL_MIC 走 chain.proceed() 阻塞到真麦一帧就绪、FILE 走 XposedPcmReader 阻塞读实时管道，
+     * 两者天然是实时节奏；而舒适噪声是即时填充、无阻塞——若不节流，下游（微信）的 read() 会以
+     * 最快速度空转返回，录音循环远超实时速率、时间线错乱 → 最终化时判"语音被其他应用占用/系统错误"。
+     * 这里按本次返回的帧数睡对应时长，补齐与真麦/FILE 一致的实时节奏。
+     */
+    private fun paceSilence(frames: Int, sampleRate: Int) {
+        if (frames <= 0 || sampleRate <= 0) return
+        val ms = frames.toLong() * 1000L / sampleRate
+        if (ms > 0) runCatching { Thread.sleep(ms) }
+    }
 }

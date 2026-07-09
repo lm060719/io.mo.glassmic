@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <cerrno>
+#include <cstdint>
 #include <cstring>
 #include <mutex>
 #include <unistd.h>
@@ -133,6 +134,59 @@ static void convert_and_write(
     }
 }
 
+// 舒适噪声幅度：±8 LSB ≈ -72 dBFS，人耳不可闻，但足以让下游 App 的 VAD 判定"有信号"。
+// 与 Kotlin 侧 io.mo.glassmic.core.audio.ComfortNoise / app 侧 ComfortNoiseSource 保持一致。
+static constexpr int32_t kComfortAmplitude = 8;
+
+// 轻量 xorshift32，仅用于生成极低电平噪声，无需密码学质量。每线程独立种子。
+static inline int32_t next_comfort_sample() {
+    static thread_local uint32_t s =
+        0x9E3779B9u ^ static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&s));
+    s ^= s << 13; s ^= s >> 17; s ^= s << 5;
+    return static_cast<int32_t>(s % (2u * kComfortAmplitude + 1u)) - kComfortAmplitude;
+}
+
+// 用舒适噪声填满输入缓冲，替代纯 0 静音——纯数字 0 是"死麦"特征，
+// 微信等录音端持续读到全 0 会判"无音频输入/麦克风被占用"而中断录音。
+// 按各 PCM 格式把 16bit 域的低电平样本换算写入（换算方式与 convert_and_write 一致）。
+static void fill_comfort_noise(
+    void* buffer, aaudio_format_t fmt, int32_t channels, int32_t numFrames
+) {
+    const int64_t samples = static_cast<int64_t>(numFrames) * channels;
+    switch (fmt) {
+        case AAUDIO_FORMAT_PCM_I16: {
+            auto* d = static_cast<int16_t*>(buffer);
+            for (int64_t i = 0; i < samples; ++i) *d++ = static_cast<int16_t>(next_comfort_sample());
+            break;
+        }
+        case AAUDIO_FORMAT_PCM_FLOAT: {
+            auto* d = static_cast<float*>(buffer);
+            constexpr float kScale = 1.0f / 32768.0f;
+            for (int64_t i = 0; i < samples; ++i) *d++ = next_comfort_sample() * kScale;
+            break;
+        }
+        case AAUDIO_FORMAT_PCM_I32: {
+            auto* d = static_cast<int32_t*>(buffer);
+            for (int64_t i = 0; i < samples; ++i) *d++ = next_comfort_sample() << 16;
+            break;
+        }
+        case AAUDIO_FORMAT_PCM_I24_PACKED: {
+            auto* d = static_cast<uint8_t*>(buffer);
+            for (int64_t i = 0; i < samples; ++i) {
+                int32_t v = next_comfort_sample() << 8;
+                *d++ = static_cast<uint8_t>(v & 0xFF);
+                *d++ = static_cast<uint8_t>((v >> 8) & 0xFF);
+                *d++ = static_cast<uint8_t>((v >> 16) & 0xFF);
+            }
+            break;
+        }
+        default:
+            std::memset(buffer, 0,
+                        static_cast<size_t>(numFrames) * channels * bytes_per_dst_sample(fmt));
+            break;
+    }
+}
+
 static int read_full(int fd, uint8_t* buf, int n) {
     int got = 0;
     while (got < n) {
@@ -179,11 +233,9 @@ static FillResult fill_pcm_impl(
     if (dst_sample_rate <= 0) dst_sample_rate = 48'000;
 
     if (decision == Decision::SILENCE) {
-        std::memset(
-            buffer,
-            0,
-            static_cast<size_t>(numFrames) * dst_channels * bytes_per_dst_sample(dst_fmt)
-        );
+        // 填舒适噪声而非纯 0：与 Java AudioRecordHook 的 SILENCE 分支一致，
+        // 避免微信等把持续全 0 判为"无输入/麦克风被占用"而中断录音。
+        fill_comfort_noise(buffer, dst_fmt, dst_channels, numFrames);
         g_pending_reads.fetch_add(1, std::memory_order_relaxed);
         g_pending_bytes.fetch_add(static_cast<uint64_t>(numFrames) * dst_channels * 2, std::memory_order_relaxed);
         g_last_sr.store(dst_sample_rate, std::memory_order_relaxed);

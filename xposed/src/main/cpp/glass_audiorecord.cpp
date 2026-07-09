@@ -43,7 +43,8 @@ static bool is_common_rate(uint32_t v) {
  * 先扫出 mSampleRate 的偏移（值唯一可判别），再按 +4/+8 取 format / channelCount，
  * 并做范围校验。校验失败时回退到安全默认。
  *
- * 仅 FILE 模式需要精确格式；SILENCE 模式按字节清零，与此无关。
+ * FILE 模式需要精确格式；SILENCE 模式填舒适噪声，格式不准时最坏只是幅度换算略偏，
+ * 仍是低电平噪声、不影响"骗过 VAD"的目的。
  */
 static void detect_format(
     const void* thiz,
@@ -90,7 +91,6 @@ static ssize_t my_read(void* thiz, void* buffer, size_t size, bool blocking) {
     int32_t bps = (fmt == SampleFmt::FLOAT) ? 4 : 2;
     if (ch <= 0) {
         // 未取到声道：按字节数兜底（frameSize 4 整除→stereo，否则 mono）。
-        // SILENCE 清零不受影响。
         ch = (n % (bps * 2) == 0) ? 2 : 1;
     }
 
