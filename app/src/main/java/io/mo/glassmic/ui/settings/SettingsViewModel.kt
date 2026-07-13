@@ -17,7 +17,9 @@ import io.mo.glassmic.data.runtime.HookStatusRepository
 import io.mo.glassmic.data.runtime.VisibilityCompatRepository
 import kotlinx.coroutines.flow.asStateFlow
 import io.mo.glassmic.log.GlassLog
+import io.mo.glassmic.data.config.AppLocale
 import io.mo.glassmic.proto.AppConfig
+import io.mo.glassmic.proto.AppLanguage
 import io.mo.glassmic.proto.FloatingSize
 import io.mo.glassmic.proto.LogLevel
 import io.mo.glassmic.proto.PlaybackPolicy
@@ -127,6 +129,13 @@ class SettingsViewModel @Inject constructor(
 
     fun setReduceMotion(reduce: Boolean) = viewModelScope.launch {
         configStore.update { it.setAppearance(it.appearance.toBuilder().setReduceMotion(reduce)) }
+    }
+
+    fun setLanguage(language: AppLanguage) = viewModelScope.launch {
+        configStore.update {
+            it.setAppearance(it.appearance.toBuilder().setLanguage(language).setLanguageResolved(true))
+        }
+        AppLocale.apply(language)
     }
 
     // ============ 悬浮窗 ============

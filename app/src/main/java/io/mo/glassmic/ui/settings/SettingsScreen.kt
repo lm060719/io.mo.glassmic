@@ -56,6 +56,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import io.mo.glassmic.BuildConfig
 import io.mo.glassmic.R
 import io.mo.glassmic.data.diag.AudioPipelineProbe
+import io.mo.glassmic.proto.AppLanguage
 import io.mo.glassmic.proto.FloatingSize
 import io.mo.glassmic.proto.LogLevel
 import io.mo.glassmic.proto.PlaybackPolicy
@@ -150,6 +151,7 @@ fun SettingsScreen(
 
             item { Section(stringResource(R.string.settings_section_appearance)) {
                 ThemePicker(cfg.appearance.theme, vm::setTheme)
+                LanguagePicker(cfg.appearance.language, vm::setLanguage)
             } }
 
             item { Section(stringResource(R.string.settings_section_floating)) {
@@ -451,6 +453,24 @@ private fun ThemePicker(current: ThemeMode, onSelect: (ThemeMode) -> Unit) {
             current == ThemeMode.LIGHT) { onSelect(ThemeMode.LIGHT) }
         PolicyOption(stringResource(R.string.settings_theme_dark),
             current == ThemeMode.DARK) { onSelect(ThemeMode.DARK) }
+    }
+}
+
+// ============ 语言 ============
+@Composable
+private fun LanguagePicker(current: AppLanguage, onSelect: (AppLanguage) -> Unit) {
+    Column {
+        Text(
+            stringResource(R.string.settings_language),
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
+        )
+        PolicyOption(stringResource(R.string.settings_language_follow),
+            current == AppLanguage.SYSTEM) { onSelect(AppLanguage.SYSTEM) }
+        PolicyOption(stringResource(R.string.settings_language_zh),
+            current == AppLanguage.ZH) { onSelect(AppLanguage.ZH) }
+        PolicyOption(stringResource(R.string.settings_language_en),
+            current == AppLanguage.EN) { onSelect(AppLanguage.EN) }
     }
 }
 

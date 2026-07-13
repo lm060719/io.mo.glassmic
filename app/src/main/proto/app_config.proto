@@ -112,12 +112,22 @@ message Appearance {
   ThemeMode theme = 1;
   bool glass_effect = 2;
   bool reduce_motion = 3;
+
+  AppLanguage language = 4;
+  // false 时启动逻辑会按系统语言自动写入 language 并置为 true，此后不再自动改写。
+  bool language_resolved = 5;
 }
 
 enum ThemeMode {
   FOLLOW_SYSTEM = 0;
   LIGHT = 1;
   DARK = 2;
+}
+
+enum AppLanguage {
+  SYSTEM = 0;
+  ZH = 1;
+  EN = 2;
 }
 
 message Logging {
