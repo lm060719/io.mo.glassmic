@@ -61,6 +61,11 @@
     <string name="hook_status_stale">已加载（无近期录音事件）</string>
     <string name="intercept_none">还没拦截到任何 AudioRecord 调用</string>
     <string name="intercept_summary">已劫持 %1$d 次 / %2$s</string>
+    <string name="source_real_mic">真实麦克风</string>
+    <string name="source_silence">静音</string>
+    <string name="source_tts">文字转语音</string>
+    <string name="home_policy_silence">静音</string>
+    <string name="home_scope_whitelist_count">白名单（%1$d）</string>
 
     <!-- 安全模式 -->
     <string name="safe_mode_title">GlassMic 已进入安全模式</string>
@@ -119,6 +124,10 @@
     <string name="settings_theme_follow">跟随系统</string>
     <string name="settings_theme_light">浅色</string>
     <string name="settings_theme_dark">深色</string>
+    <string name="settings_language">语言</string>
+    <string name="settings_language_follow">跟随系统</string>
+    <string name="settings_language_zh">简体中文</string>
+    <string name="settings_language_en">English</string>
     <string name="settings_glass_effect">液态玻璃</string>
     <string name="settings_glass_effect_hint">关闭可降低功耗</string>
     <string name="settings_reduce_motion">减少动画</string>
@@ -195,5 +204,80 @@
     <string name="settings_about_version">版本</string>
     <string name="settings_about_license">开源协议</string>
     <string name="settings_about_repo">项目仓库</string>
+
+    <!-- 通用 -->
+    <string name="common_back">返回</string>
+
+    <!-- 设置页 → 语音合成 -->
+    <string name="settings_section_ai_tts">语音合成</string>
+    <string name="ai_tts_title">AI 供应商（TTS）</string>
+    <string name="ai_tts_nav_enabled">已启用 · %1$s</string>
+    <string name="ai_tts_nav_disabled">使用系统 TTS（点击配置在线 AI）</string>
+
+    <!-- AI 供应商（TTS）配置页 -->
+    <string name="ai_tts_section_access">接入</string>
+    <string name="ai_tts_enable">启用 AI TTS</string>
+    <string name="ai_tts_protocol">接口协议</string>
+    <string name="ai_tts_provider_openai">OpenAI（/audio/speech）</string>
+    <string name="ai_tts_provider_gemini">Google Gemini（generateContent）</string>
+    <string name="ai_tts_provider_mimo">小米 MiMo（chat/completions）</string>
+    <string name="ai_tts_section_endpoint">接口</string>
+    <string name="ai_tts_endpoint_hint">自定义地址 endpoint（留空用官方默认）</string>
+    <string name="ai_tts_api_key">API Key</string>
+    <string name="ai_tts_model_hint">自定义模型 model（留空用默认）</string>
+    <string name="ai_tts_fetch_models">获取模型</string>
+    <string name="ai_tts_fetching_models">获取中…</string>
+    <string name="ai_tts_models_count">共 %1$d 个，点此重选</string>
+    <string name="ai_tts_section_voice">音色</string>
+    <string name="ai_tts_voice_hint">音色 voice（preset / OpenAI / Gemini）</string>
+    <string name="ai_tts_mimo_advanced">MiMo 进阶：模型填 -voicedesign 用文本描述定制音色（写在下方描述框）；填 -voiceclone 复刻音色（选一段 ≤60 秒、≤5MB 的参考音频）。</string>
+    <string name="ai_tts_style_prompt_hint">音色描述 / 风格（voicedesign 必填，preset 可选）</string>
+    <string name="ai_tts_clone_sample">参考音频（voiceclone）</string>
+    <string name="ai_tts_clone_sample_selected">已选择样本（≤60 秒 / ≤5MB）</string>
+    <string name="ai_tts_clone_sample_none">未选择——复刻音色需先选一段音频样本</string>
+    <string name="ai_tts_clear">清除</string>
+    <string name="ai_tts_choose_audio">选择音频</string>
+    <string name="ai_tts_format_hint">返回格式 format（OpenAI：wav / pcm）</string>
+    <string name="ai_tts_section_test">测试与试听</string>
+    <string name="ai_tts_test_connection">测试连接</string>
+    <string name="ai_tts_testing">测试中…</string>
+    <string name="ai_tts_preview_text_label">试听文本</string>
+    <string name="ai_tts_preview_default_text">你好，这是一段用于试听的示例文本。</string>
+    <string name="ai_tts_generate">生成</string>
+    <string name="ai_tts_generating">生成中…</string>
+    <string name="ai_tts_preview_play">效果试听</string>
+    <string name="ai_tts_preview_playing">播放中…</string>
+    <string name="ai_tts_save_audio">保存音频</string>
+
+    <!-- AI 供应商（TTS）动态消息 -->
+    <string name="ai_tts_connected_ok">连接成功，收到 %1$d KB 音频</string>
+    <string name="ai_tts_test_timeout">测试超时（25 秒）</string>
+    <string name="ai_tts_test_phrase">这是一段连接测试。</string>
+    <string name="ai_tts_no_models_returned">接口未返回模型</string>
+    <string name="ai_tts_fetch_models_failed">获取失败</string>
+    <string name="ai_tts_enter_preview_text">请先输入试听文本</string>
+    <string name="ai_tts_no_audio_received">未获取到音频</string>
+    <string name="ai_tts_generate_first">请先点「生成」</string>
+    <string name="ai_tts_generate_audio_first">请先生成音频</string>
+    <string name="ai_tts_saved">已保存音频</string>
+    <string name="ai_tts_save_failed">保存失败</string>
+
+    <!-- 悬浮窗内容（运行时 UI，非设置项） -->
+    <string name="float_change_source">换音源</string>
+    <string name="float_collapse">收起</string>
+    <string name="float_back">返回</string>
+    <string name="float_no_groups">还没有音频分组</string>
+    <string name="float_no_clips_in_group">该分组还没有音频</string>
+    <string name="float_tts_entry">🗣  文字转语音（TTS）</string>
+    <string name="float_current">当前</string>
+    <string name="float_tts_title">🗣 文字转语音</string>
+    <string name="float_settings">设置</string>
+    <string name="float_tts_input_hint">输入要合成的文字，先生成再播放</string>
+    <string name="float_tts_generating">生成中…</string>
+    <string name="float_tts_generate">生成</string>
+    <string name="float_tts_play">播放</string>
+    <string name="float_tts_generate_failed">生成失败，请检查网络或 TTS 引擎后重试</string>
+    <string name="float_tts_settings_title">文字转语音设置</string>
+    <string name="float_tts_progress_bar">播放进度条</string>
 
 </resources>

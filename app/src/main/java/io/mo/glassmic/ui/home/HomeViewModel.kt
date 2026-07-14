@@ -5,8 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import io.mo.glassmic.R
 import io.mo.glassmic.core.model.SourceType
 import io.mo.glassmic.data.audio.PlaybackController
+import io.mo.glassmic.data.config.AppLocale
 import io.mo.glassmic.data.config.ConfigStore
 import io.mo.glassmic.data.db.AudioDao
 import io.mo.glassmic.data.runtime.BootGateRepository
@@ -82,22 +84,22 @@ class HomeViewModel @Inject constructor(
             paused = rt.paused,
             sourceName = when (rt.currentSourceType) {
                 SourceType.FILE -> clip?.displayName ?: rt.currentAudioId ?: "—"
-                SourceType.REAL_MIC -> "真实麦克风"
-                SourceType.SILENCE -> "静音"
-                SourceType.TTS -> "文字转语音"
+                SourceType.REAL_MIC -> AppLocale.string(context, R.string.source_real_mic)
+                SourceType.SILENCE -> AppLocale.string(context, R.string.source_silence)
+                SourceType.TTS -> AppLocale.string(context, R.string.source_tts)
             },
             groupName = group?.let { "${it.emoji} ${it.name}" } ?: "—",
             policyLabel = when (cfg.playbackPolicy) {
-                ProtoPolicy.SILENCE -> "静音"
-                ProtoPolicy.LOOP -> "循环"
-                ProtoPolicy.REAL_MIC -> "切回真实麦克风"
-                else -> "循环"
+                ProtoPolicy.SILENCE -> AppLocale.string(context, R.string.home_policy_silence)
+                ProtoPolicy.LOOP -> AppLocale.string(context, R.string.library_policy_loop)
+                ProtoPolicy.REAL_MIC -> AppLocale.string(context, R.string.library_policy_real_mic)
+                else -> AppLocale.string(context, R.string.library_policy_loop)
             },
             scopeLabel = when (cfg.scopeMode) {
-                ProtoScope.GLOBAL -> "全系统"
-                ProtoScope.WHITELIST -> "白名单（${cfg.whitelistCount}）"
+                ProtoScope.GLOBAL -> AppLocale.string(context, R.string.scope_mode_global)
+                ProtoScope.WHITELIST -> AppLocale.string(context, R.string.home_scope_whitelist_count, cfg.whitelistCount)
                 // BLACKLIST 已在 UI 上隐藏；旧配置统一按"全系统"展示
-                else -> "全系统"
+                else -> AppLocale.string(context, R.string.scope_mode_global)
             },
             floatingWindowVisible = rt.floatingWindowVisible,
             positionMs = rt.positionMs,

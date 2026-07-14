@@ -17,7 +17,9 @@ import io.mo.glassmic.data.runtime.HookStatusRepository
 import io.mo.glassmic.data.runtime.VisibilityCompatRepository
 import kotlinx.coroutines.flow.asStateFlow
 import io.mo.glassmic.log.GlassLog
+import io.mo.glassmic.data.config.AppLocale
 import io.mo.glassmic.proto.AppConfig
+import io.mo.glassmic.proto.AppLanguage
 import io.mo.glassmic.proto.FloatingSize
 import io.mo.glassmic.proto.LogLevel
 import io.mo.glassmic.proto.PlaybackPolicy
@@ -127,6 +129,18 @@ class SettingsViewModel @Inject constructor(
 
     fun setReduceMotion(reduce: Boolean) = viewModelScope.launch {
         configStore.update { it.setAppearance(it.appearance.toBuilder().setReduceMotion(reduce)) }
+    }
+
+    fun setLanguage(language: AppLanguage) {
+        // 同步执行：调用方（设置页）选完语言后会立即 recreate() 让改动马上生效，
+        // 必须保证 SharedPreferences 缓存 + AppCompatDelegate 的语言在 recreate() 之前就已写入，
+        // 否则会因为协程还没跑到这里而导致第一次点击"没反应"，要点第二次才生效。
+        AppLocale.apply(context, language)
+        viewModelScope.launch {
+            configStore.update {
+                it.setAppearance(it.appearance.toBuilder().setLanguage(language).setLanguageResolved(true))
+            }
+        }
     }
 
     // ============ 悬浮窗 ============

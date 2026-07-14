@@ -49,6 +49,7 @@
         android:label="@string/app_name"
         android:description="@string/xposed_description"
         android:roundIcon="@mipmap/ic_launcher_round"
+        android:localeConfig="@xml/locales_config"
         android:supportsRtl="true"
         android:theme="@style/Theme.GlassMic"
         tools:targetApi="35">
@@ -144,6 +145,17 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- 让 AppCompatDelegate.setApplicationLocales() 的语言选择与系统 LocaleManager 同步/持久化
+             （Android 13 以下必须声明此项，否则应用内切换语言不会真正生效或无法在重启后保留） -->
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data
+                android:name="autoStoreLocales"
+                android:value="true" />
+        </service>
 
     </application>
 

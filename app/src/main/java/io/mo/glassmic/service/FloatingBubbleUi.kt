@@ -47,11 +47,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.mo.glassmic.R
 import kotlinx.coroutines.flow.Flow
 import java.io.File
 
@@ -270,7 +272,7 @@ private fun MiniBar(
                 modifier = Modifier.weight(1f)
             )
             // 换音源
-            IconChip(Icons.Filled.Refresh, "换音源", onOpenMenu)
+            IconChip(Icons.Filled.Refresh, stringResource(R.string.float_change_source), onOpenMenu)
             Spacer(Modifier.width(6.dp))
             // 播放/暂停
             Text(
@@ -292,7 +294,7 @@ private fun MiniBar(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(formatMs(positionMs), color = OnDarkDim, fontSize = 11.sp)
             Text(
-                "收起",
+                stringResource(R.string.float_collapse),
                 color = OnDarkDim,
                 fontSize = 11.sp,
                 modifier = Modifier.clickable(onClick = onCollapse)
@@ -348,20 +350,20 @@ private fun SelectMenu(
         ) {
             if (selectedGroup != null) {
                 Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = OnDark,
+                    Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.float_back), tint = OnDark,
                     modifier = Modifier.size(22.dp).clip(CircleShape)
                         .clickable { selectedGroup = null }.padding(2.dp)
                 )
                 Spacer(Modifier.width(8.dp))
             }
             Text(
-                text = selectedGroup?.let { "${it.emoji} ${it.name}" } ?: "选择音频",
+                text = selectedGroup?.let { "${it.emoji} ${it.name}" } ?: stringResource(R.string.home_pick_audio),
                 color = OnDark, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
             Text(
-                "收起", color = OnDarkDim, fontSize = 12.sp,
+                stringResource(R.string.float_collapse), color = OnDarkDim, fontSize = 12.sp,
                 modifier = Modifier.clickable(onClick = onCollapse)
             )
         }
@@ -369,9 +371,9 @@ private fun SelectMenu(
         val group = selectedGroup
         if (group == null) {
             // 文字转语音入口：输入文字实时合成喂给目标 App
-            MenuRow(text = "🗣  文字转语音（TTS）", trailing = "›", onClick = onOpenTts)
+            MenuRow(text = stringResource(R.string.float_tts_entry), trailing = "›", onClick = onOpenTts)
             if (groups.isEmpty()) {
-                EmptyHint("还没有音频分组")
+                EmptyHint(stringResource(R.string.float_no_groups))
             } else {
                 LazyColumn {
                     items(groups, key = { it.id }) { g ->
@@ -385,7 +387,7 @@ private fun SelectMenu(
             val clipsFlow = remember(group.id) { clipsProvider(group.id) }
             val clips by clipsFlow.collectAsState(initial = emptyList())
             if (clips.isEmpty()) {
-                EmptyHint("该分组还没有音频")
+                EmptyHint(stringResource(R.string.float_no_clips_in_group))
             } else {
                 LazyColumn {
                     items(clips, key = { it.id }) { c ->
@@ -432,12 +434,12 @@ private fun TtsPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "🗣 文字转语音", color = OnDark, fontSize = 14.sp,
+                stringResource(R.string.float_tts_title), color = OnDark, fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)
             )
             Icon(
                 imageVector = Icons.Filled.Settings,
-                contentDescription = "设置",
+                contentDescription = stringResource(R.string.float_settings),
                 tint = OnDarkDim,
                 modifier = Modifier
                     .size(26.dp)
@@ -447,7 +449,7 @@ private fun TtsPanel(
             )
             Spacer(Modifier.width(10.dp))
             Text(
-                "收起", color = OnDarkDim, fontSize = 12.sp,
+                stringResource(R.string.float_collapse), color = OnDarkDim, fontSize = 12.sp,
                 modifier = Modifier.clickable(onClick = onCollapse)
             )
         }
@@ -467,7 +469,7 @@ private fun TtsPanel(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
                 decorationBox = { inner ->
                     if (text.isEmpty()) {
-                        Text("输入要合成的文字，先生成再播放", color = OnDarkDim, fontSize = 14.sp)
+                        Text(stringResource(R.string.float_tts_input_hint), color = OnDarkDim, fontSize = 14.sp)
                     }
                     inner()
                 }
@@ -480,7 +482,7 @@ private fun TtsPanel(
         ) {
             val canGenerate = !generating && text.isNotBlank()
             Text(
-                text = if (generating) "生成中…" else "生成",
+                text = if (generating) stringResource(R.string.float_tts_generating) else stringResource(R.string.float_tts_generate),
                 color = OnDark,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
@@ -492,7 +494,7 @@ private fun TtsPanel(
             )
             Spacer(Modifier.width(10.dp))
             Text(
-                text = "播放",
+                text = stringResource(R.string.float_tts_play),
                 color = OnDark,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
@@ -506,7 +508,7 @@ private fun TtsPanel(
         // 仅在失败时提示，正常流程不堆文字
         if (failed) {
             Text(
-                text = "生成失败，请检查网络或 TTS 引擎后重试",
+                text = stringResource(R.string.float_tts_generate_failed),
                 color = Danger, fontSize = 11.sp,
                 modifier = Modifier.padding(top = 8.dp)
             )
@@ -551,13 +553,13 @@ private fun TtsSettingsPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = OnDark,
+                Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.float_back), tint = OnDark,
                 modifier = Modifier.size(22.dp).clip(CircleShape)
                     .clickable(onClick = onBack).padding(2.dp)
             )
             Spacer(Modifier.width(8.dp))
             Text(
-                "文字转语音设置", color = OnDark, fontSize = 14.sp,
+                stringResource(R.string.float_tts_settings_title), color = OnDark, fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f)
             )
         }
@@ -567,7 +569,7 @@ private fun TtsSettingsPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "播放进度条", color = OnDark, fontSize = 14.sp,
+                stringResource(R.string.float_tts_progress_bar), color = OnDark, fontSize = 14.sp,
                 modifier = Modifier.weight(1f)
             )
             Switch(
@@ -593,7 +595,7 @@ private fun MenuRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (leadingCurrent) {
-            Icon(Icons.Filled.Check, "当前", tint = Accent, modifier = Modifier.size(16.dp))
+            Icon(Icons.Filled.Check, stringResource(R.string.float_current), tint = Accent, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(8.dp))
         }
         Text(
