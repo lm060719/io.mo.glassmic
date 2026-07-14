@@ -1,0 +1,61 @@
+name: Sync Release to Xposed-Modules-Repo
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  sync-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync release to target repo
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
+          SOURCE_REPO="lm060719/io.mo.glassmic"
+          TARGET_REPO="Xposed-Modules-Repo/io.mo.glassmic"
+          TAG="${{ github.event.release.tag_name }}"
+
+          echo "=== Syncing release $TAG ==="
+
+          # Get release info from source
+          RELEASE_JSON=$(gh api repos/$SOURCE_REPO/releases/tags/$TAG)
+
+          NAME=$(echo "$RELEASE_JSON" | jq -r '.name')
+          BODY=$(echo "$RELEASE_JSON" | jq -r '.body')
+          DRAFT=$(echo "$RELEASE_JSON" | jq -r '.draft')
+          PRERELEASE=$(echo "$RELEASE_JSON" | jq -r '.prerelease')
+
+          # Create release on target
+          CREATE_ARGS=(
+            --repo "$TARGET_REPO"
+            --tag "$TAG"
+            --target "main"
+          )
+          [ "$NAME" != "null" ] && CREATE_ARGS+=(--title "$NAME")
+          [ "$BODY" != "null" ] && CREATE_ARGS+=(--notes "$BODY")
+          [ "$DRAFT" = "true" ] && CREATE_ARGS+=(--draft)
+          [ "$PRERELEASE" = "true" ] && CREATE_ARGS+=(--prerelease)
+
+          echo "Creating release on target..."
+          gh release create "${CREATE_ARGS[@]}"
+
+          # Download and re-upload all assets
+          ASSETS=$(echo "$RELEASE_JSON" | jq -r '.assets[] | "\(.name) \(.browser_download_url)"')
+
+          if [ -n "$ASSETS" ]; then
+            echo "Syncing assets..."
+            ASSET_DIR=$(mktemp -d)
+            echo "$ASSETS" | while read -r NAME URL; do
+              echo "  Downloading $NAME..."
+              curl -sL -o "$ASSET_DIR/$NAME" "$URL"
+              echo "  Uploading $NAME..."
+              gh release upload "$TAG" "$ASSET_DIR/$NAME" \
+                --repo "$TARGET_REPO" --clobber
+            done
+          fi
+
+          echo "=== Release $TAG synced successfully ==="
