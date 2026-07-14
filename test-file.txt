@@ -1,0 +1,2 @@
+name: test
+on: push
