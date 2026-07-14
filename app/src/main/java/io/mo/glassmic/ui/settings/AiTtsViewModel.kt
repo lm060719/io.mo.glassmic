@@ -10,11 +10,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import io.mo.glassmic.R
 import io.mo.glassmic.audio.tts.AiTtsSynthesizer
 import io.mo.glassmic.audio.tts.PcmSink
 import io.mo.glassmic.audio.tts.TtsRequest
 import io.mo.glassmic.data.audio.SampleImport
 import io.mo.glassmic.data.audio.TtsCloneSampleStore
+import io.mo.glassmic.data.config.AppLocale
 import io.mo.glassmic.data.config.ConfigStore
 import io.mo.glassmic.proto.AppConfig
 import io.mo.glassmic.proto.TtsAiConfig
@@ -119,16 +121,18 @@ class AiTtsViewModel @Inject constructor(
                     override fun onFormat(sampleRate: Int, channels: Int) {}
                     override fun onPcm(chunk: ByteArray) { bytes += chunk.size }
                     override fun onDone() {
-                        if (cont.isActive) cont.resumeWith(Result.success(true to "连接成功，收到 ${bytes / 1024} KB 音频"))
+                        if (cont.isActive) {
+                            cont.resumeWith(Result.success(true to AppLocale.string(context, R.string.ai_tts_connected_ok, bytes / 1024)))
+                        }
                     }
                     override fun onError(message: String) {
                         if (cont.isActive) cont.resumeWith(Result.success(false to message))
                     }
                 }
-                aiTts.synthesize(TtsRequest("这是一段连接测试。"), sink)
+                aiTts.synthesize(TtsRequest(AppLocale.string(context, R.string.ai_tts_test_phrase)), sink)
                 cont.invokeOnCancellation { aiTts.cancel() }
             }
-        } ?: (false to "测试超时（25 秒）")
+        } ?: (false to AppLocale.string(context, R.string.ai_tts_test_timeout))
         _test.value = TtsTestState.Result(result.first, result.second)
     }
 
@@ -140,8 +144,11 @@ class AiTtsViewModel @Inject constructor(
         if (_models.value is TtsModelsState.Loading) return@launch
         _models.value = TtsModelsState.Loading
         _models.value = runCatching { aiTts.fetchModels() }.fold(
-            onSuccess = { if (it.isEmpty()) TtsModelsState.Error("接口未返回模型") else TtsModelsState.Loaded(it) },
-            onFailure = { TtsModelsState.Error(it.message ?: "获取失败") }
+            onSuccess = {
+                if (it.isEmpty()) TtsModelsState.Error(AppLocale.string(context, R.string.ai_tts_no_models_returned))
+                else TtsModelsState.Loaded(it)
+            },
+            onFailure = { TtsModelsState.Error(it.message ?: AppLocale.string(context, R.string.ai_tts_fetch_models_failed)) }
         )
     }
 
@@ -159,7 +166,7 @@ class AiTtsViewModel @Inject constructor(
     fun generatePreview(text: String) {
         val t = text.trim()
         if (t.isEmpty()) {
-            _preview.value = TtsPreviewState.Error("请先输入试听文本")
+            _preview.value = TtsPreviewState.Error(AppLocale.string(context, R.string.ai_tts_enter_preview_text))
             return
         }
         stopPlayback()
@@ -177,7 +184,7 @@ class AiTtsViewModel @Inject constructor(
             override fun onDone() {
                 val pcm = out.toByteArray()
                 if (pcm.isEmpty()) {
-                    _preview.value = TtsPreviewState.Error("未获取到音频")
+                    _preview.value = TtsPreviewState.Error(AppLocale.string(context, R.string.ai_tts_no_audio_received))
                 } else {
                     generatedPcm = pcm; generatedSr = sr; generatedCh = ch
                     _preview.value = TtsPreviewState.Ready(pcm.size)
@@ -191,7 +198,7 @@ class AiTtsViewModel @Inject constructor(
     /** 播放上次生成的语音（可重复调用重播）。 */
     fun playPreview() {
         val pcm = generatedPcm ?: run {
-            _preview.value = TtsPreviewState.Error("请先点「生成」")
+            _preview.value = TtsPreviewState.Error(AppLocale.string(context, R.string.ai_tts_generate_first))
             return
         }
         startPlayback(pcm, generatedSr, generatedCh)
@@ -262,7 +269,7 @@ class AiTtsViewModel @Inject constructor(
     fun saveGeneratedTo(uri: Uri) {
         val pcm = generatedPcm
         if (pcm == null) {
-            _saveMessage.value = "请先生成音频"
+            _saveMessage.value = AppLocale.string(context, R.string.ai_tts_generate_audio_first)
             return
         }
         val sr = generatedSr
@@ -272,7 +279,7 @@ class AiTtsViewModel @Inject constructor(
                 context.contentResolver.openOutputStream(uri)?.use { out -> writeWav(out, pcm, sr, ch) }
                     ?: error("无法打开输出流")
             }.isSuccess
-            _saveMessage.value = if (ok) "已保存音频" else "保存失败"
+            _saveMessage.value = AppLocale.string(context, if (ok) R.string.ai_tts_saved else R.string.ai_tts_save_failed)
         }
     }
 

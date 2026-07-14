@@ -61,6 +61,11 @@
     <string name="hook_status_stale">Loaded (no recent recording events)</string>
     <string name="intercept_none">No AudioRecord calls intercepted yet</string>
     <string name="intercept_summary">Intercepted %1$d times / %2$s</string>
+    <string name="source_real_mic">Real Microphone</string>
+    <string name="source_silence">Silence</string>
+    <string name="source_tts">Text-to-Speech</string>
+    <string name="home_policy_silence">Silence</string>
+    <string name="home_scope_whitelist_count">Whitelist (%1$d)</string>
 
     <!-- Safe mode -->
     <string name="safe_mode_title">GlassMic has entered Safe Mode</string>
@@ -199,5 +204,80 @@
     <string name="settings_about_version">Version</string>
     <string name="settings_about_license">License</string>
     <string name="settings_about_repo">Repository</string>
+
+    <!-- Common -->
+    <string name="common_back">Back</string>
+
+    <!-- Settings → Speech Synthesis -->
+    <string name="settings_section_ai_tts">Speech Synthesis</string>
+    <string name="ai_tts_title">AI Provider (TTS)</string>
+    <string name="ai_tts_nav_enabled">Enabled · %1$s</string>
+    <string name="ai_tts_nav_disabled">Using system TTS (tap to configure online AI)</string>
+
+    <!-- AI Provider (TTS) settings page -->
+    <string name="ai_tts_section_access">Access</string>
+    <string name="ai_tts_enable">Enable AI TTS</string>
+    <string name="ai_tts_protocol">Protocol</string>
+    <string name="ai_tts_provider_openai">OpenAI (/audio/speech)</string>
+    <string name="ai_tts_provider_gemini">Google Gemini (generateContent)</string>
+    <string name="ai_tts_provider_mimo">Xiaomi MiMo (chat/completions)</string>
+    <string name="ai_tts_section_endpoint">Endpoint</string>
+    <string name="ai_tts_endpoint_hint">Custom endpoint (leave empty for the official default)</string>
+    <string name="ai_tts_api_key">API Key</string>
+    <string name="ai_tts_model_hint">Custom model (leave empty for the default)</string>
+    <string name="ai_tts_fetch_models">Fetch Models</string>
+    <string name="ai_tts_fetching_models">Fetching…</string>
+    <string name="ai_tts_models_count">%1$d total — tap to reselect</string>
+    <string name="ai_tts_section_voice">Voice</string>
+    <string name="ai_tts_voice_hint">Voice (preset / OpenAI / Gemini)</string>
+    <string name="ai_tts_mimo_advanced">MiMo advanced: set the model to -voicedesign to customize a voice via text description (write it in the description box below); set it to -voiceclone to clone a voice (pick a ≤60s, ≤5MB reference sample).</string>
+    <string name="ai_tts_style_prompt_hint">Voice description / style (required for voicedesign, optional for preset)</string>
+    <string name="ai_tts_clone_sample">Reference Audio (voiceclone)</string>
+    <string name="ai_tts_clone_sample_selected">Sample selected (≤60s / ≤5MB)</string>
+    <string name="ai_tts_clone_sample_none">Not selected — voice cloning needs a reference audio sample first</string>
+    <string name="ai_tts_clear">Clear</string>
+    <string name="ai_tts_choose_audio">Choose Audio</string>
+    <string name="ai_tts_format_hint">Response format (OpenAI: wav / pcm)</string>
+    <string name="ai_tts_section_test">Test &amp; Preview</string>
+    <string name="ai_tts_test_connection">Test Connection</string>
+    <string name="ai_tts_testing">Testing…</string>
+    <string name="ai_tts_preview_text_label">Preview Text</string>
+    <string name="ai_tts_preview_default_text">Hello, this is a sample text for preview.</string>
+    <string name="ai_tts_generate">Generate</string>
+    <string name="ai_tts_generating">Generating…</string>
+    <string name="ai_tts_preview_play">Preview</string>
+    <string name="ai_tts_preview_playing">Playing…</string>
+    <string name="ai_tts_save_audio">Save Audio</string>
+
+    <!-- AI Provider (TTS) dynamic messages -->
+    <string name="ai_tts_connected_ok">Connected successfully, received %1$d KB of audio</string>
+    <string name="ai_tts_test_timeout">Test timed out (25s)</string>
+    <string name="ai_tts_test_phrase">This is a connection test.</string>
+    <string name="ai_tts_no_models_returned">The endpoint returned no models</string>
+    <string name="ai_tts_fetch_models_failed">Fetch failed</string>
+    <string name="ai_tts_enter_preview_text">Enter preview text first</string>
+    <string name="ai_tts_no_audio_received">No audio received</string>
+    <string name="ai_tts_generate_first">Tap "Generate" first</string>
+    <string name="ai_tts_generate_audio_first">Generate audio first</string>
+    <string name="ai_tts_saved">Audio saved</string>
+    <string name="ai_tts_save_failed">Save failed</string>
+
+    <!-- Floating window content (runtime UI, not a settings screen) -->
+    <string name="float_change_source">Change Source</string>
+    <string name="float_collapse">Collapse</string>
+    <string name="float_back">Back</string>
+    <string name="float_no_groups">No clip groups yet</string>
+    <string name="float_no_clips_in_group">This group has no audio yet</string>
+    <string name="float_tts_entry">🗣  Text-to-Speech (TTS)</string>
+    <string name="float_current">Current</string>
+    <string name="float_tts_title">🗣 Text-to-Speech</string>
+    <string name="float_settings">Settings</string>
+    <string name="float_tts_input_hint">Enter text to synthesize, generate before playing</string>
+    <string name="float_tts_generating">Generating…</string>
+    <string name="float_tts_generate">Generate</string>
+    <string name="float_tts_play">Play</string>
+    <string name="float_tts_generate_failed">Generation failed. Check your network or TTS engine and try again</string>
+    <string name="float_tts_settings_title">Text-to-Speech Settings</string>
+    <string name="float_tts_progress_bar">Playback Progress Bar</string>
 
 </resources>

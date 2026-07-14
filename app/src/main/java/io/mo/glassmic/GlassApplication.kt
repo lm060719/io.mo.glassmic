@@ -71,6 +71,6 @@ class GlassApplication : Application() {
             }
             detected
         }
-        AppLocale.apply(resolved)
+        AppLocale.apply(this, resolved)
     }
 }

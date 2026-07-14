@@ -19,6 +19,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import io.mo.glassmic.core.model.SourceType
 import io.mo.glassmic.data.audio.FloatingIconStore
 import io.mo.glassmic.data.audio.PlaybackController
+import io.mo.glassmic.data.config.AppLocale
 import io.mo.glassmic.data.config.ConfigStore
 import io.mo.glassmic.data.db.AudioDao
 import io.mo.glassmic.data.runtime.RuntimeStateHolder
@@ -109,7 +110,9 @@ class FloatingWindowService : LifecycleService() {
         }
         params = lp
 
-        val overlayHost = FloatingOverlayHost(this).also { it.onCreate() }
+        // Service 不是 Activity，Android 13 以下不会自动跟随应用内切换的语言，
+        // 这里手动包一层 Locale Context 传给 ComposeView，保证悬浮窗文案也能正确显示。
+        val overlayHost = FloatingOverlayHost(AppLocale.wrap(this)).also { it.onCreate() }
         host = overlayHost
         overlayHost.setContent {
             MaterialTheme {

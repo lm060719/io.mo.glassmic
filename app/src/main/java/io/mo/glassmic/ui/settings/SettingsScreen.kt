@@ -1,5 +1,6 @@
 package io.mo.glassmic.ui.settings
 
+import android.app.Activity
 import android.app.StatusBarManager
 import android.content.ComponentName
 import android.content.Intent
@@ -133,7 +134,7 @@ fun SettingsScreen(
                 title = { Text(stringResource(R.string.settings_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 }
             )
@@ -159,7 +160,12 @@ fun SettingsScreen(
 
             item { Section(stringResource(R.string.settings_section_appearance)) {
                 ThemePicker(cfg.appearance.theme, vm::setTheme)
-                LanguagePicker(cfg.appearance.language, vm::setLanguage)
+                LanguagePicker(cfg.appearance.language) { lang ->
+                    vm.setLanguage(lang)
+                    // MainActivity 非 AppCompatActivity，Android 13 以下切换语言后需要手动
+                    // recreate() 才能让新的 attachBaseContext() 包装立即生效，而不必等下次冷启动。
+                    (context as? Activity)?.recreate()
+                }
             } }
 
             item { Section(stringResource(R.string.settings_section_floating)) {
@@ -283,10 +289,14 @@ fun SettingsScreen(
                 }
             } }
 
-            item { Section("语音合成") {
+            item { Section(stringResource(R.string.settings_section_ai_tts)) {
                 NavRow(
-                    title = "AI 供应商（TTS）",
-                    subtitle = if (cfg.tts.ai.enabled) "已启用 · ${providerLabel(cfg.tts.ai.provider)}" else "使用系统 TTS（点击配置在线 AI）",
+                    title = stringResource(R.string.ai_tts_title),
+                    subtitle = if (cfg.tts.ai.enabled) {
+                        stringResource(R.string.ai_tts_nav_enabled, providerLabel(cfg.tts.ai.provider))
+                    } else {
+                        stringResource(R.string.ai_tts_nav_disabled)
+                    },
                     onClick = onOpenAiTts
                 )
             } }

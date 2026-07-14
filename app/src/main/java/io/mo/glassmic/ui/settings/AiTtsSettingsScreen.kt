@@ -40,8 +40,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import io.mo.glassmic.R
 import io.mo.glassmic.proto.TtsProvider
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -72,10 +74,10 @@ fun AiTtsSettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("AI 供应商（TTS）") },
+                title = { Text(stringResource(R.string.ai_tts_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.common_back))
                     }
                 }
             )
@@ -90,34 +92,33 @@ fun AiTtsSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             item {
-                Section("接入") {
-                    SwitchRow(label = "启用 AI TTS", checked = ai.enabled, onChange = vm::setEnabled)
+                Section(stringResource(R.string.ai_tts_section_access)) {
+                    SwitchRow(label = stringResource(R.string.ai_tts_enable), checked = ai.enabled, onChange = vm::setEnabled)
                     ProviderPicker(ai.provider, vm::setProvider)
                 }
             }
 
             item {
-                Section("接口") {
-                    ConfigTextField("自定义地址 endpoint（留空用官方默认）", ai.endpoint, vm::setEndpoint)
-                    ConfigTextField("API Key", ai.apiKey, vm::setApiKey)
-                    ConfigTextField("自定义模型 model（留空用默认）", ai.model, vm::setModel)
+                Section(stringResource(R.string.ai_tts_section_endpoint)) {
+                    ConfigTextField(stringResource(R.string.ai_tts_endpoint_hint), ai.endpoint, vm::setEndpoint)
+                    ConfigTextField(stringResource(R.string.ai_tts_api_key), ai.apiKey, vm::setApiKey)
+                    ConfigTextField(stringResource(R.string.ai_tts_model_hint), ai.model, vm::setModel)
                     ModelPickerRow(vm.models.collectAsState().value, onFetch = vm::fetchModels, onPick = vm::setModel)
                 }
             }
 
             item {
-                Section("音色") {
-                    ConfigTextField("音色 voice（preset / OpenAI / Gemini）", ai.voice, vm::setVoice)
+                Section(stringResource(R.string.ai_tts_section_voice)) {
+                    ConfigTextField(stringResource(R.string.ai_tts_voice_hint), ai.voice, vm::setVoice)
                     if (ai.provider == TtsProvider.MIMO) {
                         Text(
-                            "MiMo 进阶：模型填 -voicedesign 用文本描述定制音色（写在下方描述框）；" +
-                                "填 -voiceclone 复刻音色（选一段 ≤60 秒、≤5MB 的参考音频）。",
+                            stringResource(R.string.ai_tts_mimo_advanced),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                         )
                         ConfigTextField(
-                            "音色描述 / 风格（voicedesign 必填，preset 可选）",
+                            stringResource(R.string.ai_tts_style_prompt_hint),
                             ai.stylePrompt, vm::setStylePrompt
                         )
                         CloneSampleRow(
@@ -126,18 +127,19 @@ fun AiTtsSettingsScreen(
                             onClear = { vm.setCloneSample(null) }
                         )
                     }
-                    ConfigTextField("返回格式 format（OpenAI：wav / pcm）", ai.format, vm::setFormat)
+                    ConfigTextField(stringResource(R.string.ai_tts_format_hint), ai.format, vm::setFormat)
                 }
             }
 
             item {
-                Section("测试与试听") {
+                Section(stringResource(R.string.ai_tts_section_test)) {
                     TestRow(vm.test.collectAsState().value, onTest = vm::testConnection)
-                    var previewText by remember { mutableStateOf("你好，这是一段用于试听的示例文本。") }
+                    val defaultPreviewText = stringResource(R.string.ai_tts_preview_default_text)
+                    var previewText by remember { mutableStateOf(defaultPreviewText) }
                     OutlinedTextField(
                         value = previewText,
                         onValueChange = { previewText = it },
-                        label = { Text("试听文本") },
+                        label = { Text(stringResource(R.string.ai_tts_preview_text_label)) },
                         minLines = 2,
                         maxLines = 4,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
@@ -161,13 +163,13 @@ private fun ProviderPicker(current: TtsProvider, onSelect: (TtsProvider) -> Unit
     val effective = if (current == TtsProvider.UNRECOGNIZED) TtsProvider.OPENAI else current
     Column {
         Text(
-            "接口协议",
+            stringResource(R.string.ai_tts_protocol),
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
         )
-        PolicyOption("OpenAI（/audio/speech）", effective == TtsProvider.OPENAI) { onSelect(TtsProvider.OPENAI) }
-        PolicyOption("Google Gemini（generateContent）", effective == TtsProvider.GEMINI) { onSelect(TtsProvider.GEMINI) }
-        PolicyOption("小米 MiMo（chat/completions）", effective == TtsProvider.MIMO) { onSelect(TtsProvider.MIMO) }
+        PolicyOption(stringResource(R.string.ai_tts_provider_openai), effective == TtsProvider.OPENAI) { onSelect(TtsProvider.OPENAI) }
+        PolicyOption(stringResource(R.string.ai_tts_provider_gemini), effective == TtsProvider.GEMINI) { onSelect(TtsProvider.GEMINI) }
+        PolicyOption(stringResource(R.string.ai_tts_provider_mimo), effective == TtsProvider.MIMO) { onSelect(TtsProvider.MIMO) }
     }
 }
 
@@ -182,7 +184,7 @@ private fun ModelPickerRow(state: TtsModelsState, onFetch: () -> Unit, onPick: (
     ) {
         Box {
             TextButton(onClick = onFetch, enabled = !loading) {
-                Text(if (loading) "获取中…" else "获取模型")
+                Text(if (loading) stringResource(R.string.ai_tts_fetching_models) else stringResource(R.string.ai_tts_fetch_models))
             }
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
                 (state as? TtsModelsState.Loaded)?.models?.forEach { m ->
@@ -199,7 +201,7 @@ private fun ModelPickerRow(state: TtsModelsState, onFetch: () -> Unit, onPick: (
                 modifier = Modifier.weight(1f)
             )
             is TtsModelsState.Loaded -> Text(
-                "共 ${state.models.size} 个，点此重选",
+                stringResource(R.string.ai_tts_models_count, state.models.size),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
                 modifier = Modifier.weight(1f).clickable { open = true }
@@ -216,15 +218,15 @@ private fun CloneSampleRow(hasSample: Boolean, onPick: () -> Unit, onClear: () -
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text("参考音频（voiceclone）", style = MaterialTheme.typography.bodyLarge)
+            Text(stringResource(R.string.ai_tts_clone_sample), style = MaterialTheme.typography.bodyLarge)
             Text(
-                if (hasSample) "已选择样本（≤60 秒 / ≤5MB）" else "未选择——复刻音色需先选一段音频样本",
+                if (hasSample) stringResource(R.string.ai_tts_clone_sample_selected) else stringResource(R.string.ai_tts_clone_sample_none),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )
         }
-        if (hasSample) TextButton(onClick = onClear) { Text("清除") }
-        TextButton(onClick = onPick) { Text("选择音频") }
+        if (hasSample) TextButton(onClick = onClear) { Text(stringResource(R.string.ai_tts_clear)) }
+        TextButton(onClick = onPick) { Text(stringResource(R.string.ai_tts_choose_audio)) }
     }
 }
 
@@ -243,16 +245,16 @@ private fun PreviewRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         TextButton(onClick = onGenerate, enabled = !generating) {
-            Text(if (generating) "生成中…" else "生成")
+            Text(if (generating) stringResource(R.string.ai_tts_generating) else stringResource(R.string.ai_tts_generate))
         }
         Spacer(modifier = Modifier.width(4.dp))
         TextButton(onClick = onPlay, enabled = ready && !playing) {
-            Text(if (playing) "播放中…" else "效果试听")
+            Text(if (playing) stringResource(R.string.ai_tts_preview_playing) else stringResource(R.string.ai_tts_preview_play))
         }
         // 生成出试听音频后才显示「保存音频」
         if (ready) {
             Spacer(modifier = Modifier.width(4.dp))
-            TextButton(onClick = onSave) { Text("保存音频") }
+            TextButton(onClick = onSave) { Text(stringResource(R.string.ai_tts_save_audio)) }
         }
         Spacer(modifier = Modifier.width(8.dp))
         if (state is TtsPreviewState.Error) {
@@ -274,7 +276,7 @@ private fun TestRow(state: TtsTestState, onTest: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         TextButton(onClick = onTest, enabled = !testing) {
-            Text(if (testing) "测试中…" else "测试连接")
+            Text(if (testing) stringResource(R.string.ai_tts_testing) else stringResource(R.string.ai_tts_test_connection))
         }
         Spacer(modifier = Modifier.width(8.dp))
         if (state is TtsTestState.Result) {
