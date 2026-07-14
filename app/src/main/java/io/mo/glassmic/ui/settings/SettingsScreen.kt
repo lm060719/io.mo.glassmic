@@ -25,6 +25,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,14 +48,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.mo.glassmic.BuildConfig
@@ -190,18 +198,7 @@ fun SettingsScreen(
             } }
 
             item { Section(stringResource(R.string.settings_section_policy)) {
-                Text(
-                    stringResource(R.string.settings_policy_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                )
-                PolicyOption(stringResource(R.string.library_policy_loop),
-                    cfg.playbackPolicy == PlaybackPolicy.LOOP) { vm.setPolicy(PlaybackPolicy.LOOP) }
-                PolicyOption(stringResource(R.string.library_policy_silence),
-                    cfg.playbackPolicy == PlaybackPolicy.SILENCE) { vm.setPolicy(PlaybackPolicy.SILENCE) }
-                PolicyOption(stringResource(R.string.library_policy_real_mic),
-                    cfg.playbackPolicy == PlaybackPolicy.REAL_MIC) { vm.setPolicy(PlaybackPolicy.REAL_MIC) }
+                PlaybackPolicyPicker(cfg.playbackPolicy, vm::setPolicy)
             } }
 
             item { Section(stringResource(R.string.settings_section_diag)) {
@@ -438,60 +435,131 @@ internal fun PolicyOption(label: String, selected: Boolean, onSelect: () -> Unit
     }
 }
 
+// ============ 可折叠下拉选择行（点击展开为悬浮菜单） ============
+@Composable
+internal fun <T> DropdownPickerRow(
+    title: String,
+    hint: String? = null,
+    current: T,
+    options: List<Pair<String, T>>,
+    onSelect: (T) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val currentLabel = options.firstOrNull { it.second == current }?.first.orEmpty()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = true }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            if (!hint.isNullOrBlank()) {
+                Text(
+                    hint, style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            }
+        }
+        Box {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    currentLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                offset = DpOffset(x = 0.dp, y = 4.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                options.forEach { (label, value) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = { onSelect(value); expanded = false },
+                        trailingIcon = {
+                            if (value == current) {
+                                Icon(
+                                    Icons.Filled.Check, contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
 // ============ 主题 ============
 @Composable
 private fun ThemePicker(current: ThemeMode, onSelect: (ThemeMode) -> Unit) {
-    Column {
-        Text(
-            stringResource(R.string.settings_theme),
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
-        )
-        PolicyOption(stringResource(R.string.settings_theme_follow),
-            current == ThemeMode.FOLLOW_SYSTEM) { onSelect(ThemeMode.FOLLOW_SYSTEM) }
-        PolicyOption(stringResource(R.string.settings_theme_light),
-            current == ThemeMode.LIGHT) { onSelect(ThemeMode.LIGHT) }
-        PolicyOption(stringResource(R.string.settings_theme_dark),
-            current == ThemeMode.DARK) { onSelect(ThemeMode.DARK) }
-    }
+    DropdownPickerRow(
+        title = stringResource(R.string.settings_theme),
+        current = current,
+        options = listOf(
+            stringResource(R.string.settings_theme_follow) to ThemeMode.FOLLOW_SYSTEM,
+            stringResource(R.string.settings_theme_light) to ThemeMode.LIGHT,
+            stringResource(R.string.settings_theme_dark) to ThemeMode.DARK
+        ),
+        onSelect = onSelect
+    )
 }
 
 // ============ 语言 ============
 @Composable
 private fun LanguagePicker(current: AppLanguage, onSelect: (AppLanguage) -> Unit) {
-    Column {
-        Text(
-            stringResource(R.string.settings_language),
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
-        )
-        PolicyOption(stringResource(R.string.settings_language_follow),
-            current == AppLanguage.SYSTEM) { onSelect(AppLanguage.SYSTEM) }
-        PolicyOption(stringResource(R.string.settings_language_zh),
-            current == AppLanguage.ZH) { onSelect(AppLanguage.ZH) }
-        PolicyOption(stringResource(R.string.settings_language_en),
-            current == AppLanguage.EN) { onSelect(AppLanguage.EN) }
-    }
+    DropdownPickerRow(
+        title = stringResource(R.string.settings_language),
+        current = current,
+        options = listOf(
+            stringResource(R.string.settings_language_follow) to AppLanguage.SYSTEM,
+            stringResource(R.string.settings_language_zh) to AppLanguage.ZH,
+            stringResource(R.string.settings_language_en) to AppLanguage.EN
+        ),
+        onSelect = onSelect
+    )
+}
+
+// ============ 默认播放策略 ============
+@Composable
+private fun PlaybackPolicyPicker(current: PlaybackPolicy, onSelect: (PlaybackPolicy) -> Unit) {
+    DropdownPickerRow(
+        title = stringResource(R.string.settings_policy_hint),
+        current = current,
+        options = listOf(
+            stringResource(R.string.library_policy_loop) to PlaybackPolicy.LOOP,
+            stringResource(R.string.library_policy_silence) to PlaybackPolicy.SILENCE,
+            stringResource(R.string.library_policy_real_mic) to PlaybackPolicy.REAL_MIC
+        ),
+        onSelect = onSelect
+    )
 }
 
 // ============ 日志级别 ============
 @Composable
 private fun LogLevelPicker(current: LogLevel, onSelect: (LogLevel) -> Unit) {
-    Column {
-        Text(
-            stringResource(R.string.settings_log_level),
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
-        )
-        PolicyOption(stringResource(R.string.settings_log_off),
-            current == LogLevel.OFF) { onSelect(LogLevel.OFF) }
-        PolicyOption(stringResource(R.string.settings_log_basic),
-            current == LogLevel.BASIC) { onSelect(LogLevel.BASIC) }
-        PolicyOption(stringResource(R.string.settings_log_verbose),
-            current == LogLevel.VERBOSE) { onSelect(LogLevel.VERBOSE) }
-        PolicyOption(stringResource(R.string.settings_log_debug),
-            current == LogLevel.DEBUG) { onSelect(LogLevel.DEBUG) }
-    }
+    DropdownPickerRow(
+        title = stringResource(R.string.settings_log_level),
+        current = current,
+        options = listOf(
+            stringResource(R.string.settings_log_off) to LogLevel.OFF,
+            stringResource(R.string.settings_log_basic) to LogLevel.BASIC,
+            stringResource(R.string.settings_log_verbose) to LogLevel.VERBOSE,
+            stringResource(R.string.settings_log_debug) to LogLevel.DEBUG
+        ),
+        onSelect = onSelect
+    )
 }
 
 // ============ 悬浮窗不透明度 ============
@@ -535,20 +603,17 @@ private fun LabeledSlider(
 // ============ 悬浮球大小 ============
 @Composable
 private fun FloatingSizePicker(current: FloatingSize, onSelect: (FloatingSize) -> Unit) {
-    Column {
-        Text(
-            stringResource(R.string.settings_floating_size),
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp)
-        )
-        val effective = if (current == FloatingSize.UNRECOGNIZED) FloatingSize.STANDARD else current
-        PolicyOption(stringResource(R.string.settings_floating_size_small),
-            effective == FloatingSize.SMALL) { onSelect(FloatingSize.SMALL) }
-        PolicyOption(stringResource(R.string.settings_floating_size_standard),
-            effective == FloatingSize.STANDARD) { onSelect(FloatingSize.STANDARD) }
-        PolicyOption(stringResource(R.string.settings_floating_size_large),
-            effective == FloatingSize.LARGE) { onSelect(FloatingSize.LARGE) }
-    }
+    val effective = if (current == FloatingSize.UNRECOGNIZED) FloatingSize.STANDARD else current
+    DropdownPickerRow(
+        title = stringResource(R.string.settings_floating_size),
+        current = effective,
+        options = listOf(
+            stringResource(R.string.settings_floating_size_small) to FloatingSize.SMALL,
+            stringResource(R.string.settings_floating_size_standard) to FloatingSize.STANDARD,
+            stringResource(R.string.settings_floating_size_large) to FloatingSize.LARGE
+        ),
+        onSelect = onSelect
+    )
 }
 
 // ============ 悬浮球图标 ============
