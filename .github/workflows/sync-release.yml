@@ -29,10 +29,10 @@ jobs:
           DRAFT=$(echo "$RELEASE_JSON" | jq -r '.draft')
           PRERELEASE=$(echo "$RELEASE_JSON" | jq -r '.prerelease')
 
-          # Create release on target
+          # Build gh release create command (tag is positional arg)
           CREATE_ARGS=(
+            "$TAG"
             --repo "$TARGET_REPO"
-            --tag "$TAG"
             --target "main"
           )
           [ "$NAME" != "null" ] && CREATE_ARGS+=(--title "$NAME")
