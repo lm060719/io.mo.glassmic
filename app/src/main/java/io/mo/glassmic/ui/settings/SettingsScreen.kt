@@ -581,11 +581,11 @@ private fun OpacitySlider(value: Float, onChange: (Float) -> Unit) {
             Text("%.0f%%".format(value * 100), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f))
         }
+        // 不设 steps：与波形透明度一致的无级滑动
         Slider(
             value = value,
             onValueChange = onChange,
-            valueRange = 0.2f..1f,
-            steps = 7
+            valueRange = 0.2f..1f
         )
     }
 }
