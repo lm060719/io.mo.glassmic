@@ -48,6 +48,9 @@ message TtsConfig {
 
   // 悬浮窗 TTS 面板：生成后显示可拖动的播放进度条
   bool progress_bar_enabled = 5;
+
+  // 延时播放：点「播放」后等待多少毫秒再真正出声，0 表示立即播放
+  int32 delay_ms = 6;
 }
 
 // AI TTS 接入配置。兼容 OpenAI / Gemini 接口协议，支持自定义 url 与模型。

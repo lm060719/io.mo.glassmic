@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.material.icons.Icons
@@ -49,7 +50,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -105,6 +108,10 @@ fun FloatingBubbleRoot(
     ttsActive: Boolean,
     onOpenTtsSettings: () -> Unit,
     onToggleTtsProgressBar: (Boolean) -> Unit,
+    ttsDelayMs: Int,
+    onSetTtsDelay: (Int) -> Unit,
+    ttsDelayRemainingMs: Long,
+    onCancelDelayedTts: () -> Unit,
     onSeekTts: (Float) -> Unit,
     onCloseTtsSettings: () -> Unit,
     onDragBy: (Float, Float) -> Unit,
@@ -154,12 +161,16 @@ fun FloatingBubbleRoot(
             durationMs = durationMs,
             onSeek = onSeekTts,
             onOpenSettings = onOpenTtsSettings,
+            delayRemainingMs = ttsDelayRemainingMs,
+            onCancelDelayed = onCancelDelayedTts,
             onDragBy = onDragBy,
             onDragEnd = onDragEnd
         )
         FloatMode.TTS_SETTINGS -> TtsSettingsPanel(
             progressBarEnabled = ttsProgressBarEnabled,
             onToggleProgressBar = onToggleTtsProgressBar,
+            delayMs = ttsDelayMs,
+            onSetDelay = onSetTtsDelay,
             onBack = onCloseTtsSettings,
             onDragBy = onDragBy,
             onDragEnd = onDragEnd
@@ -418,6 +429,8 @@ private fun TtsPanel(
     durationMs: Long,
     onSeek: (Float) -> Unit,
     onOpenSettings: () -> Unit,
+    delayRemainingMs: Long,
+    onCancelDelayed: () -> Unit,
     onDragBy: (Float, Float) -> Unit,
     onDragEnd: () -> Unit,
 ) {
@@ -493,15 +506,29 @@ private fun TtsPanel(
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             )
             Spacer(Modifier.width(10.dp))
+            // 延时倒计时中：按钮变成「⏱ 1.5s 取消」，再点一次即取消本次播放
+            val counting = delayRemainingMs > 0
             Text(
-                text = stringResource(R.string.float_tts_play),
+                text = if (counting) {
+                    stringResource(R.string.float_tts_delay_countdown, formatSeconds(delayRemainingMs))
+                } else {
+                    stringResource(R.string.float_tts_play)
+                },
                 color = OnDark,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
-                    .background(if (ready) Accent else Color(0x1AFFFFFF))
-                    .clickable(enabled = ready, onClick = onPlay)
+                    .background(
+                        when {
+                            counting -> Danger
+                            ready -> Accent
+                            else -> Color(0x1AFFFFFF)
+                        }
+                    )
+                    .clickable(enabled = ready || counting) {
+                        if (counting) onCancelDelayed() else onPlay()
+                    }
                     .padding(horizontal = 18.dp, vertical = 8.dp)
             )
         }
@@ -536,6 +563,8 @@ private fun TtsPanel(
 private fun TtsSettingsPanel(
     progressBarEnabled: Boolean,
     onToggleProgressBar: (Boolean) -> Unit,
+    delayMs: Int,
+    onSetDelay: (Int) -> Unit,
     onBack: () -> Unit,
     onDragBy: (Float, Float) -> Unit,
     onDragEnd: () -> Unit,
@@ -577,7 +606,147 @@ private fun TtsSettingsPanel(
                 onCheckedChange = onToggleProgressBar
             )
         }
+        // 延时播放：点「播放」后等多久才真正出声，留出切到目标 App 的时间
+        TtsDelaySetting(delayMs = delayMs, onSetDelay = onSetDelay)
     }
+}
+
+/** 延时播放：关 / 0.5s / 1s / 2s 四个预设 + 自定义秒数输入。 */
+@Composable
+private fun TtsDelaySetting(delayMs: Int, onSetDelay: (Int) -> Unit) {
+    val presets = listOf(0, 500, 1_000, 2_000)
+    // 当前值不在预设里 → 说明用的是自定义，输入框默认展开并回填
+    var customOpen by remember(delayMs) { mutableStateOf(delayMs !in presets) }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 14.dp)) {
+        Text(
+            stringResource(R.string.float_tts_delay), color = OnDark, fontSize = 14.sp
+        )
+        Text(
+            stringResource(R.string.float_tts_delay_hint), color = OnDarkDim, fontSize = 11.sp,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            presets.forEach { preset ->
+                DelayChip(
+                    label = if (preset == 0) {
+                        stringResource(R.string.float_tts_delay_off)
+                    } else {
+                        stringResource(R.string.float_tts_delay_seconds, formatSeconds(preset.toLong()))
+                    },
+                    selected = !customOpen && delayMs == preset,
+                    onClick = {
+                        customOpen = false
+                        onSetDelay(preset)
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            DelayChip(
+                label = stringResource(R.string.float_tts_delay_custom),
+                selected = customOpen,
+                onClick = { customOpen = true },
+                modifier = Modifier.weight(1.2f)
+            )
+        }
+        if (customOpen) {
+            CustomDelayInput(delayMs = delayMs, onSetDelay = onSetDelay)
+        }
+    }
+}
+
+@Composable
+private fun DelayChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = label,
+        color = OnDark,
+        fontSize = 11.sp,
+        maxLines = 1,
+        textAlign = TextAlign.Center,
+        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) Accent else Color(0x22FFFFFF))
+            .clickable(onClick = onClick)
+            .padding(vertical = 7.dp)
+    )
+}
+
+/**
+ * 自定义秒数输入。只在合法（0 < 秒 ≤ 上限）时才写配置，
+ * 输入过程中的空串 / "1." 等中间态保持原值不动，避免边打字边把设置改坏。
+ */
+@Composable
+private fun CustomDelayInput(delayMs: Int, onSetDelay: (Int) -> Unit) {
+    var raw by remember(delayMs) {
+        mutableStateOf(if (delayMs > 0) formatSeconds(delayMs.toLong()) else "")
+    }
+    val maxSeconds = FloatingWindowService.MAX_TTS_DELAY_MS / 1000
+    val invalid = raw.isNotBlank() && raw.toFloatOrNull().let { it == null || it <= 0f || it > maxSeconds }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0x22FFFFFF))
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+        ) {
+            BasicTextField(
+                value = raw,
+                onValueChange = { input ->
+                    // 只收数字和小数点，避免 toFloat 每次都在异常里兜底
+                    raw = input.filter { it.isDigit() || it == '.' }.take(6)
+                    raw.toFloatOrNull()
+                        ?.takeIf { it > 0f && it <= maxSeconds }
+                        ?.let { onSetDelay((it * 1000).toInt()) }
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                textStyle = TextStyle(color = OnDark, fontSize = 13.sp),
+                cursorBrush = SolidColor(Accent),
+                modifier = Modifier.fillMaxWidth(),
+                decorationBox = { inner ->
+                    if (raw.isEmpty()) {
+                        Text(
+                            stringResource(R.string.float_tts_delay_custom_hint),
+                            color = OnDarkDim, fontSize = 13.sp
+                        )
+                    }
+                    inner()
+                }
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            stringResource(R.string.float_tts_delay_unit), color = OnDarkDim, fontSize = 12.sp
+        )
+    }
+    if (invalid) {
+        Text(
+            stringResource(R.string.float_tts_delay_range, maxSeconds),
+            color = Danger, fontSize = 10.sp,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
+
+/** 1500 → "1.5"，1000 → "1"：整秒不拖小数尾巴。 */
+private fun formatSeconds(ms: Long): String {
+    val seconds = ms / 1000.0
+    return if (seconds % 1.0 == 0.0) seconds.toInt().toString() else "%.1f".format(seconds)
 }
 
 @Composable

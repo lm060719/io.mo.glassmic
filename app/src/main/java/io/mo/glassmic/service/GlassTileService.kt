@@ -2,6 +2,7 @@ package io.mo.glassmic.service
 
 import android.graphics.drawable.Icon
 import android.os.Build
+import android.provider.Settings
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import dagger.hilt.android.AndroidEntryPoint
@@ -65,6 +66,21 @@ class GlassTileService : TileService() {
         bootGate.markEnabledForThisBoot()
         configStore.update { it.setGlobalSwitch(true) }
         GlassForegroundService.start(applicationContext)
+        // 磁贴是「一键可用」入口：主开关之外同步拉起悬浮窗，省去再进主界面点一次
+        showFloatingWindow()
+    }
+
+    /**
+     * 同步开启悬浮窗。无悬浮窗权限时 [FloatingWindowService.start] 会静默返回，这里补一条日志；
+     * 已显示则不重复启动（重复 startService 只会再走一遍 onStartCommand，但避免无谓调用）。
+     */
+    private fun showFloatingWindow() {
+        if (runtime.value.floatingWindowVisible) return
+        if (!Settings.canDrawOverlays(applicationContext)) {
+            GlassLog.b("Tile") { "缺少悬浮窗权限，跳过悬浮窗开启" }
+            return
+        }
+        FloatingWindowService.start(applicationContext)
     }
 
     private suspend fun disableMaster() {

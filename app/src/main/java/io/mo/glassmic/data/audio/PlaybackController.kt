@@ -13,7 +13,9 @@ import io.mo.glassmic.data.config.ConfigStore
 import io.mo.glassmic.data.db.AudioDao
 import io.mo.glassmic.data.runtime.RuntimeStateHolder
 import io.mo.glassmic.log.GlassLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -104,9 +106,42 @@ class PlaybackController @Inject constructor(
         }
     }
 
-    /** 把上次生成的语音喂给目标 App，可重复调用重播。 */
+    private val _ttsDelayRemainingMs = MutableStateFlow(0L)
+    /** 延时播放倒计时剩余毫秒，0 表示当前没有待播放的语音。供悬浮窗显示倒计时。 */
+    val ttsDelayRemainingMs: StateFlow<Long> = _ttsDelayRemainingMs.asStateFlow()
+
+    /**
+     * 把上次生成的语音喂给目标 App，可重复调用重播。
+     *
+     * 配置了 tts.delay_ms 时先倒计时再出声，留出切到目标 App 的时间；
+     * 倒计时期间可用 [cancelDelayedTts] 取消。返回 true 表示语音已真正开始播放
+     * （被取消则返回 false）。
+     */
     suspend fun playGeneratedTts(): Boolean = withContext(Dispatchers.IO) {
         val pcm = generatedTtsPcm ?: return@withContext false
+
+        val delayMs = configStore.current().tts.delayMs.toLong().coerceAtLeast(0L)
+        if (delayMs > 0) {
+            // 已有倒计时在跑时不叠加，交给调用方先取消
+            if (_ttsDelayRemainingMs.value > 0L) return@withContext false
+            val deadline = System.currentTimeMillis() + delayMs
+            try {
+                var remaining = delayMs
+                while (remaining > 0) {
+                    _ttsDelayRemainingMs.value = remaining
+                    // 100ms 一档刷新，倒计时读数够跟手又不至于频繁重组
+                    delay(remaining.coerceAtMost(COUNTDOWN_TICK_MS))
+                    remaining = deadline - System.currentTimeMillis()
+                }
+            } catch (e: CancellationException) {
+                // 取消后要清干净，否则下次播放会被上面的"已有倒计时"分支挡掉
+                _ttsDelayRemainingMs.value = 0L
+                GlassLog.b("Playback") { "TTS 延时播放已取消" }
+                throw e
+            }
+            _ttsDelayRemainingMs.value = 0L
+        }
+
         publisher.setSource(BufferedPcmSource(pcm))
         publisher.setPaused(false)
         configStore.update {
@@ -114,6 +149,11 @@ class PlaybackController @Inject constructor(
             it.setCurrentAudioId("")
         }
         true
+    }
+
+    /** 倒计时归零，[playGeneratedTts] 的协程被取消后由调用方触发。 */
+    fun clearTtsDelayCountdown() {
+        _ttsDelayRemainingMs.value = 0L
     }
 
     /** 合成并转成主时钟格式（48kHz 单声道 PCM16）。 */
@@ -150,6 +190,7 @@ class PlaybackController @Inject constructor(
     private companion object {
         const val MASTER_SAMPLE_RATE = 48_000
         const val MASTER_CHANNELS = 1
+        const val COUNTDOWN_TICK_MS = 100L
     }
 
     /** 切回真实麦克风：释放当前 file source，运行态置 REAL_MIC，清空持久化选中。 */

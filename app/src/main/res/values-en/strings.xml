@@ -279,5 +279,14 @@
     <string name="float_tts_generate_failed">Generation failed. Check your network or TTS engine and try again</string>
     <string name="float_tts_settings_title">Text-to-Speech Settings</string>
     <string name="float_tts_progress_bar">Playback Progress Bar</string>
+    <string name="float_tts_delay">Delayed Playback</string>
+    <string name="float_tts_delay_hint">Wait before speaking, so you can switch to the target app</string>
+    <string name="float_tts_delay_off">Off</string>
+    <string name="float_tts_delay_seconds">%1$ss</string>
+    <string name="float_tts_delay_custom">Custom</string>
+    <string name="float_tts_delay_custom_hint">e.g. 1.5</string>
+    <string name="float_tts_delay_unit">sec</string>
+    <string name="float_tts_delay_range">Enter a value between 0 and %1$d seconds</string>
+    <string name="float_tts_delay_countdown">%1$ss · Cancel</string>
 
 </resources>

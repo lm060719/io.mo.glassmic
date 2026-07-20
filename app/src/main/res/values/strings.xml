@@ -279,5 +279,14 @@
     <string name="float_tts_generate_failed">生成失败，请检查网络或 TTS 引擎后重试</string>
     <string name="float_tts_settings_title">文字转语音设置</string>
     <string name="float_tts_progress_bar">播放进度条</string>
+    <string name="float_tts_delay">延时播放</string>
+    <string name="float_tts_delay_hint">点「播放」后延后出声，留出切到目标 App 的时间</string>
+    <string name="float_tts_delay_off">关</string>
+    <string name="float_tts_delay_seconds">%1$ss</string>
+    <string name="float_tts_delay_custom">自定义</string>
+    <string name="float_tts_delay_custom_hint">如 1.5</string>
+    <string name="float_tts_delay_unit">秒</string>
+    <string name="float_tts_delay_range">请输入 0 到 %1$d 之间的秒数</string>
+    <string name="float_tts_delay_countdown">%1$ss 取消</string>
 
 </resources>

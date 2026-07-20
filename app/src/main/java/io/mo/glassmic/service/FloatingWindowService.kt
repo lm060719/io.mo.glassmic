@@ -26,6 +26,7 @@ import io.mo.glassmic.data.runtime.RuntimeStateHolder
 import io.mo.glassmic.log.GlassLog
 import io.mo.glassmic.proto.AppConfig
 import io.mo.glassmic.proto.FloatingSize
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -54,6 +55,14 @@ class FloatingWindowService : LifecycleService() {
     private var params: WindowManager.LayoutParams? = null
 
     private val modeFlow = MutableStateFlow(FloatMode.BALL)
+
+    /**
+     * 悬浮球的锚点位置（用户拖动决定）。
+     * 展开态（菜单/迷你条/TTS）面板比球宽，靠右时会被 [clampExpandedX] 临时左移避让屏幕边缘，
+     * 但该偏移不写回锚点；收起时按锚点还原，否则球会一次次被"推"到屏幕左侧。
+     */
+    private var anchorX = DEFAULT_X
+    private var anchorY = DEFAULT_Y
 
     override fun onCreate() {
         super.onCreate()
@@ -105,8 +114,8 @@ class FloatingWindowService : LifecycleService() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 24
-            y = 300
+            x = anchorX
+            y = anchorY
         }
         params = lp
 
@@ -122,6 +131,7 @@ class FloatingWindowService : LifecycleService() {
                 val allClips by audioDao.observeAllClips().collectAsState(initial = emptyList())
                 val mode by modeFlow.collectAsState()
                 val ttsGen by playback.ttsGen.collectAsState()
+                val ttsDelayRemainingMs by playback.ttsDelayRemainingMs.collectAsState()
 
                 val activeFile = rt.currentSourceType == SourceType.FILE && rt.enabled && !rt.safeMode
                 val currentId = cfg.currentAudioId
@@ -160,6 +170,10 @@ class FloatingWindowService : LifecycleService() {
                     ttsActive = rt.currentSourceType == SourceType.TTS,
                     onOpenTtsSettings = { setMode(FloatMode.TTS_SETTINGS) },
                     onToggleTtsProgressBar = { enabled -> onToggleTtsProgressBar(enabled) },
+                    ttsDelayMs = cfg.tts.delayMs,
+                    onSetTtsDelay = { ms -> onSetTtsDelay(ms) },
+                    ttsDelayRemainingMs = ttsDelayRemainingMs,
+                    onCancelDelayedTts = { onCancelDelayedTts() },
                     onSeekTts = { frac -> onSeek(frac, rt.durationMs) },
                     onCloseTtsSettings = { setMode(FloatMode.TTS) },
                     onDragBy = { dx, dy -> onDragBy(dx, dy) },
@@ -191,17 +205,35 @@ class FloatingWindowService : LifecycleService() {
         }
     }
 
+    /** 延时播放期间持有倒计时协程，供再次点击时取消。 */
+    private var ttsPlayJob: Job? = null
+
     private fun onPlayTts() {
-        lifecycleScope.launch {
+        ttsPlayJob = lifecycleScope.launch {
             val ok = playback.playGeneratedTts()
             if (!ok) GlassLog.b("Float") { "TTS 播放失败（尚未生成）" }
         }
+    }
+
+    /** 倒计时中再点一次播放按钮 → 取消，不出声。 */
+    private fun onCancelDelayedTts() {
+        ttsPlayJob?.cancel()
+        ttsPlayJob = null
+        playback.clearTtsDelayCountdown()
     }
 
     private fun onToggleTtsProgressBar(enabled: Boolean) {
         lifecycleScope.launch {
             configStore.update {
                 it.setTts(it.tts.toBuilder().setProgressBarEnabled(enabled).build())
+            }
+        }
+    }
+
+    private fun onSetTtsDelay(delayMs: Int) {
+        lifecycleScope.launch {
+            configStore.update {
+                it.setTts(it.tts.toBuilder().setDelayMs(delayMs.coerceIn(0, MAX_TTS_DELAY_MS)).build())
             }
         }
     }
@@ -223,14 +255,30 @@ class FloatingWindowService : LifecycleService() {
     private fun onDragEnd() {
         // 松手后停在原地，仅做边界兜底，允许自由悬停（不贴边）
         clampToBounds()
+        // 用户主动拖动即视为重新选定位置：同步锚点，收起时才不会跳回旧位置
+        params?.let { anchorX = it.x; anchorY = it.y }
     }
 
     private fun setMode(mode: FloatMode) {
         modeFlow.value = mode
-        // TTS 面板需要输入法焦点，其它态保持不可聚焦（不拦截触摸）
-        setWindowFocusable(mode == FloatMode.TTS)
-        // 展开态（迷你条/菜单/TTS）确保不超出屏幕右边
-        if (mode != FloatMode.BALL) clampExpandedX()
+        // TTS 面板与其设置面板（自定义延时输入）需要输入法焦点，其它态保持不可聚焦（不拦截触摸）
+        setWindowFocusable(mode == FloatMode.TTS || mode == FloatMode.TTS_SETTINGS)
+        // 展开态（迷你条/菜单/TTS）确保不超出屏幕右边；收起时还原到球的锚点
+        if (mode != FloatMode.BALL) clampExpandedX() else restoreAnchor()
+    }
+
+    /**
+     * 收起为球态时还原用户拖动过的锚点位置。
+     * 边界兜底放到 post 里执行：此刻 view 仍是展开态的宽度，需等重新测量成球的尺寸后再 clamp，
+     * 否则会用面板宽度去约束球，把靠右的球再次推向左边。
+     */
+    private fun restoreAnchor() {
+        val lp = params ?: return
+        val h = host ?: return
+        lp.x = anchorX
+        lp.y = anchorY
+        runCatching { windowManager?.updateViewLayout(h.view, lp) }
+        h.view.post { clampToBounds() }
     }
 
     /**
@@ -285,6 +333,12 @@ class FloatingWindowService : LifecycleService() {
     private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
 
     companion object {
+        private const val DEFAULT_X = 24
+        private const val DEFAULT_Y = 300
+
+        /** 自定义延时上限 60s：再长就该用别的方式了，也避免误输入把语音永远压住。 */
+        const val MAX_TTS_DELAY_MS = 60_000
+
         fun start(ctx: Context) {
             if (!Settings.canDrawOverlays(ctx)) return
             ctx.startService(Intent(ctx, FloatingWindowService::class.java))
