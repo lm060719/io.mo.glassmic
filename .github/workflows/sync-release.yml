@@ -1,0 +1,71 @@
+name: Sync Release to Xposed-Modules-Repo
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to sync (e.g. 11-1.2.9)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  sync-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync release to target repo
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
+          SOURCE_REPO="lm060719/io.mo.glassmic"
+          TARGET_REPO="Xposed-Modules-Repo/io.mo.glassmic"
+          # Support both release trigger and manual dispatch
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${{ github.event.release.tag_name }}"
+          fi
+
+          echo "=== Syncing release $TAG ==="
+
+          # Get release info from source
+          RELEASE_JSON=$(gh api repos/$SOURCE_REPO/releases/tags/$TAG)
+
+          NAME=$(echo "$RELEASE_JSON" | jq -r '.name')
+          BODY=$(echo "$RELEASE_JSON" | jq -r '.body')
+          DRAFT=$(echo "$RELEASE_JSON" | jq -r '.draft')
+          PRERELEASE=$(echo "$RELEASE_JSON" | jq -r '.prerelease')
+
+          # Build gh release create command (tag is positional arg)
+          CREATE_ARGS=(
+            "$TAG"
+            --repo "$TARGET_REPO"
+            --target "main"
+          )
+          [ "$NAME" != "null" ] && CREATE_ARGS+=(--title "$NAME")
+          [ "$BODY" != "null" ] && CREATE_ARGS+=(--notes "$BODY")
+          [ "$DRAFT" = "true" ] && CREATE_ARGS+=(--draft)
+          [ "$PRERELEASE" = "true" ] && CREATE_ARGS+=(--prerelease)
+
+          echo "Creating release on target..."
+          gh release create "${CREATE_ARGS[@]}"
+
+          # Download and re-upload all assets
+          ASSETS=$(echo "$RELEASE_JSON" | jq -r '.assets[] | "\(.name) \(.browser_download_url)"')
+
+          if [ -n "$ASSETS" ]; then
+            echo "Syncing assets..."
+            ASSET_DIR=$(mktemp -d)
+            echo "$ASSETS" | while read -r NAME URL; do
+              echo "  Downloading $NAME..."
+              curl -sL -o "$ASSET_DIR/$NAME" "$URL"
+              echo "  Uploading $NAME..."
+              gh release upload "$TAG" "$ASSET_DIR/$NAME" \
+                --repo "$TARGET_REPO" --clobber
+            done
+          fi
+
+          echo "=== Release $TAG synced successfully ==="

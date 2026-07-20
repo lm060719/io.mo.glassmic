@@ -51,7 +51,7 @@ Open the floating window's menu and tap "🗣 Text-to-Speech". Type your text, t
 
 1. Install the APK.
 2. Enable the GlassMic module in LSPosed.
-3. Use the recommended LSPosed scope: `android` and `system`.
+3. It is recommended to use `android` and `system` for the scope, as well as the target application.
 4. Reboot the device so the module is loaded cleanly.
 5. Open GlassMic, complete onboarding, grant permissions, import an audio file, and select it as the current source.
 6. Start GlassMic from the main screen when you want the virtual microphone to be active.
