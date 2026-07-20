@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.Dp
@@ -26,6 +27,8 @@ import io.mo.glassmic.data.runtime.RuntimeStateHolder
 import io.mo.glassmic.log.GlassLog
 import io.mo.glassmic.proto.AppConfig
 import io.mo.glassmic.proto.FloatingSize
+import io.mo.glassmic.ui.theme.LocalGlassEnabled
+import io.mo.glassmic.ui.theme.LocalReduceMotion
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -124,7 +127,9 @@ class FloatingWindowService : LifecycleService() {
         val overlayHost = FloatingOverlayHost(AppLocale.wrap(this)).also { it.onCreate() }
         host = overlayHost
         overlayHost.setContent {
-            MaterialTheme {
+            // 悬浮窗以前只包了裸 MaterialTheme{}，Slider/Switch 会用 Material3 默认紫色，
+            // 和面板里的绿色 Accent 打架。挂上 OverlayColorScheme 后它们自动跟随主色。
+            MaterialTheme(colorScheme = OverlayColorScheme) {
                 val rt by runtime.flow.collectAsState()
                 val cfg by configStore.flow.collectAsState(initial = AppConfig.getDefaultInstance())
                 val groups by audioDao.observeGroups().collectAsState(initial = emptyList())
@@ -137,6 +142,11 @@ class FloatingWindowService : LifecycleService() {
                 val currentId = cfg.currentAudioId
                 val currentName = allClips.firstOrNull { it.id == currentId }?.displayName
 
+                // 悬浮窗不走 GlassMicTheme，这两个外观开关得在这里手动注入
+                CompositionLocalProvider(
+                    LocalGlassEnabled provides cfg.appearance.glassEffect,
+                    LocalReduceMotion provides cfg.appearance.reduceMotion,
+                ) {
                 FloatingBubbleRoot(
                     mode = mode,
                     activeFile = activeFile,
@@ -179,6 +189,7 @@ class FloatingWindowService : LifecycleService() {
                     onDragBy = { dx, dy -> onDragBy(dx, dy) },
                     onDragEnd = { onDragEnd() },
                 )
+                }
             }
         }
         runCatching { wm.addView(overlayHost.view, lp) }
@@ -318,7 +329,7 @@ class FloatingWindowService : LifecycleService() {
         val lp = params ?: return
         val h = host ?: return
         val screenW = resources.displayMetrics.widthPixels
-        val panelW = dpToPx(300)
+        val panelW = dpToPx(EXPANDED_PANEL_WIDTH_DP)
         if (lp.x + panelW > screenW) lp.x = (screenW - panelW).coerceAtLeast(8)
         if (lp.x < 8) lp.x = 8
         runCatching { windowManager?.updateViewLayout(h.view, lp) }

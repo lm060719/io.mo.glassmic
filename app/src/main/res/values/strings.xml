@@ -268,9 +268,9 @@
     <string name="float_back">返回</string>
     <string name="float_no_groups">还没有音频分组</string>
     <string name="float_no_clips_in_group">该分组还没有音频</string>
-    <string name="float_tts_entry">🗣  文字转语音（TTS）</string>
+    <string name="float_tab_tts">🗣 文字转语音</string>
+    <string name="float_tab_library">🎵 音频库</string>
     <string name="float_current">当前</string>
-    <string name="float_tts_title">🗣 文字转语音</string>
     <string name="float_settings">设置</string>
     <string name="float_tts_input_hint">输入要合成的文字，先生成再播放</string>
     <string name="float_tts_generating">生成中…</string>
