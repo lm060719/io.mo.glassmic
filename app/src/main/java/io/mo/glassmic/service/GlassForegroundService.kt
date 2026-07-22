@@ -58,7 +58,9 @@ class GlassForegroundService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        return START_STICKY
+        // 被系统杀掉后不自动拉起——与「不在用户没主动启用时启动」的要求一致，
+        // 异常退出由 RUNNING_SENTINEL + SafeModeWatchdog 检测处理，不靠 sticky 复活掩盖。
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent): IBinder? {
