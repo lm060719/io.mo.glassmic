@@ -232,6 +232,8 @@
     <string name="ai_tts_voice_hint">Voice (preset / OpenAI / Gemini)</string>
     <string name="ai_tts_mimo_advanced">MiMo advanced: set the model to -voicedesign to customize a voice via text description (write it in the description box below); set it to -voiceclone to clone a voice (pick a ≤60s, ≤5MB reference sample).</string>
     <string name="ai_tts_style_prompt_hint">Voice description / style (required for voicedesign, optional for preset)</string>
+    <string name="ai_tts_mimo_optimize_text_preview">Optimize preview text (optimize_text_preview)</string>
+    <string name="ai_tts_mimo_optimize_text_preview_hint">Allow AI to preprocess/rewrite input text in voicedesign mode</string>
     <string name="ai_tts_clone_sample">Reference Audio (voiceclone)</string>
     <string name="ai_tts_clone_sample_selected">Sample selected (≤60s / ≤5MB)</string>
     <string name="ai_tts_clone_sample_none">Not selected — voice cloning needs a reference audio sample first</string>

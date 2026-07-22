@@ -200,7 +200,8 @@ class AiTtsSynthesizer @Inject constructor(
             }
             model.contains("voicedesign", ignoreCase = true) -> {
                 if (userContent.isBlank()) return sink.onError("voicedesign 需要在「音色描述」里填写描述文本")
-                audioParams.put("optimize_text_preview", true)
+                val optimizePreview = if (ai.hasMimoOptimizeTextPreview()) ai.mimoOptimizeTextPreview else true
+                audioParams.put("optimize_text_preview", optimizePreview)
             }
             else -> audioParams.put("voice", ai.voice.ifBlank { "Chloe" })
         }

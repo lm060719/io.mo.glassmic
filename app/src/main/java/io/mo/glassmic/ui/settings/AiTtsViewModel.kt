@@ -89,6 +89,7 @@ class AiTtsViewModel @Inject constructor(
     fun setVoice(v: String) = updateAi { it.voice = v }
     fun setFormat(v: String) = updateAi { it.format = v }
     fun setStylePrompt(v: String) = updateAi { it.stylePrompt = v }
+    fun setMimoOptimizeTextPreview(v: Boolean) = updateAi { it.mimoOptimizeTextPreview = v }
 
     // ---- 参考音频（voiceclone）----
     private val _sampleError = MutableStateFlow<String?>(null)

@@ -121,6 +121,13 @@ fun AiTtsSettingsScreen(
                             stringResource(R.string.ai_tts_style_prompt_hint),
                             ai.stylePrompt, vm::setStylePrompt
                         )
+                        val optimizePreview = if (ai.hasMimoOptimizeTextPreview()) ai.mimoOptimizeTextPreview else true
+                        SwitchRow(
+                            label = stringResource(R.string.ai_tts_mimo_optimize_text_preview),
+                            hint = stringResource(R.string.ai_tts_mimo_optimize_text_preview_hint),
+                            checked = optimizePreview,
+                            onChange = vm::setMimoOptimizeTextPreview
+                        )
                         CloneSampleRow(
                             hasSample = ai.cloneSamplePath.isNotBlank(),
                             onPick = { sampleLauncher.launch(arrayOf("audio/*")) },

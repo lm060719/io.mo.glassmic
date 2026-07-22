@@ -67,6 +67,7 @@ message TtsAiConfig {
   // MiMo 专用：
   string style_prompt = 9;       // user 消息内容：preset 的风格指令 / voicedesign 的音色描述
   string clone_sample_path = 10; // voiceclone 参考音频样本（filesDir 下相对路径）
+  optional bool mimo_optimize_text_preview = 11; // voicedesign 模式下是否优化文本预预览 (默认 true)
 }
 
 enum TtsProvider {

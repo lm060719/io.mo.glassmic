@@ -232,6 +232,8 @@
     <string name="ai_tts_voice_hint">音色 voice（preset / OpenAI / Gemini）</string>
     <string name="ai_tts_mimo_advanced">MiMo 进阶：模型填 -voicedesign 用文本描述定制音色（写在下方描述框）；填 -voiceclone 复刻音色（选一段 ≤60 秒、≤5MB 的参考音频）。</string>
     <string name="ai_tts_style_prompt_hint">音色描述 / 风格（voicedesign 必填，preset 可选）</string>
+    <string name="ai_tts_mimo_optimize_text_preview">优化文本（optimize_text_preview）</string>
+    <string name="ai_tts_mimo_optimize_text_preview_hint">voicedesign 模式下允许 AI 预处理/改写输入文本</string>
     <string name="ai_tts_clone_sample">参考音频（voiceclone）</string>
     <string name="ai_tts_clone_sample_selected">已选择样本（≤60 秒 / ≤5MB）</string>
     <string name="ai_tts_clone_sample_none">未选择——复刻音色需先选一段音频样本</string>
