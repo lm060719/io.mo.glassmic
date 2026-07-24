@@ -18,12 +18,20 @@ import java.util.concurrent.atomic.AtomicLong
 object XBridge {
 
     private const val CACHE_TTL_MS = 50L
+    // Provider 被禁用/不可达（= 前台服务未运行）时的回退缓存时长。
+    // 拉长它，避免服务关闭期间某个 App 仍在录音时，每 50ms 就对已禁用的 Provider 空查询一次。
+    private const val UNREACHABLE_TTL_MS = 2000L
 
     private var cachedSource: SourceType? = null
     private var cachedAt: Long = 0L
     private var cachedPkg: String = ""
+    // 上次查询 Provider 是否可达（false = 服务未运行 / Provider 被禁用）
+    @Volatile private var lastReachable: Boolean = true
 
     @Volatile var currentPackage: String = ""
+
+    /** 注入入口设置：101 = libxposed API 101，82 = legacy。仅用于诊断状态展示。 */
+    @Volatile var apiVersion: Int = 101
 
     fun pingModuleLoaded(ctx: Context, callerPackage: String, api: Int = 101) {
         runCatching {
@@ -109,7 +117,8 @@ object XBridge {
 
     fun resolveSource(ctx: Context, callerPackage: String): SourceType {
         val now = System.currentTimeMillis()
-        if (cachedPkg == callerPackage && cachedSource != null && now - cachedAt < CACHE_TTL_MS) {
+        val ttl = if (lastReachable) CACHE_TTL_MS else UNREACHABLE_TTL_MS
+        if (cachedPkg == callerPackage && cachedSource != null && now - cachedAt < ttl) {
             return cachedSource!!
         }
 
@@ -122,10 +131,22 @@ object XBridge {
 
     private fun queryProvider(cr: ContentResolver, pkg: String): SourceType {
         val uri = Uri.parse("content://${Constants.PROVIDER_RUNTIME}/resolve")
+        // selectionArgs[1] 带上 api 版本，供 RuntimeProvider 顺手更新「模块已激活」诊断状态，
+        // 免去在注入进程 attach 阶段单独 ping（那是复活的主要来源）。
         return runCatching {
-            cr.query(uri, null, null, arrayOf(pkg), null)?.use { c ->
-                if (c.moveToFirst()) SourceType.valueOf(c.getString(0)) else SourceType.REAL_MIC
-            } ?: SourceType.REAL_MIC
-        }.getOrDefault(SourceType.REAL_MIC)
+            val c = cr.query(uri, null, null, arrayOf(pkg, apiVersion.toString()), null)
+            if (c == null) {
+                // Provider 被禁用（服务未运行）→ AMS 不解析、不拉起本进程，直接走真麦
+                lastReachable = false
+                return SourceType.REAL_MIC
+            }
+            c.use {
+                lastReachable = true
+                if (it.moveToFirst()) SourceType.valueOf(it.getString(0)) else SourceType.REAL_MIC
+            }
+        }.getOrElse {
+            lastReachable = false
+            SourceType.REAL_MIC
+        }
     }
 }

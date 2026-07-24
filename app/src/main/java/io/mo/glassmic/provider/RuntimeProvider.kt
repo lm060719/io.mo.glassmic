@@ -40,6 +40,9 @@ class RuntimeProvider : ContentProvider() {
         selectionArgs: Array<out String>?, sortOrder: String?
     ): Cursor {
         val pkg = selectionArgs?.firstOrNull() ?: ""
+        // 「模块已激活」诊断状态：注入侧不再在每个 App 启动时单独 ping，改由这里在真正被查询
+        // （= 服务运行且目标 App 正在录音）时顺手更新。节流写入，避免高频录音把 prefs 写爆。
+        recordPing(pkg, selectionArgs?.getOrNull(1)?.toIntOrNull() ?: 0)
         val resolver = entryPoint().resolver()
         val src = resolver.resolve(pkg)
         val snap = resolver.configSnapshot()
@@ -86,6 +89,24 @@ class RuntimeProvider : ContentProvider() {
         return super.call(method, arg, extras)
     }
 
+    /** 节流更新 XPOSED_STATUS：与旧 xposed_ping 写入同一份 prefs，HookStatusRepository 无需改动。 */
+    private fun recordPing(pkg: String, api: Int) {
+        val now = System.currentTimeMillis()
+        if (now - lastPingWrite < PING_WRITE_THROTTLE_MS) return
+        lastPingWrite = now
+        runCatching {
+            val prefs = context?.getSharedPreferences(
+                Constants.XPOSED_STATUS_PREFS, Context.MODE_PRIVATE
+            ) ?: return
+            val oldApi = prefs.getInt(Constants.XPOSED_STATUS_API, 0)
+            prefs.edit()
+                .putLong(Constants.XPOSED_STATUS_LAST_PING, now)
+                .putString(Constants.XPOSED_STATUS_LAST_PACKAGE, pkg)
+                .putInt(Constants.XPOSED_STATUS_API, maxOf(oldApi, api))
+                .apply()
+        }
+    }
+
     private fun entryPoint(): RuntimeEntryPoint =
         EntryPointAccessors.fromApplication(
             context!!.applicationContext, RuntimeEntryPoint::class.java
@@ -95,4 +116,9 @@ class RuntimeProvider : ContentProvider() {
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
+
+    private companion object {
+        @Volatile private var lastPingWrite = 0L
+        private const val PING_WRITE_THROTTLE_MS = 3000L
+    }
 }

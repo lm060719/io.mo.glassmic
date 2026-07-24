@@ -9,6 +9,7 @@ import io.mo.glassmic.data.config.ConfigStore
 import io.mo.glassmic.data.runtime.BootGateRepository
 import io.mo.glassmic.data.runtime.SafeModeRepository
 import io.mo.glassmic.log.GlassLog
+import io.mo.glassmic.provider.ProviderGate
 import io.mo.glassmic.proto.AppLanguage
 import io.mo.glassmic.service.SafeModeWatchdog
 import kotlinx.coroutines.runBlocking
@@ -36,6 +37,12 @@ class GlassApplication : Application() {
             GlassLog.b("App") { "found stale running sentinel; clearing without safe mode" }
         }
         runCatching { sentinel.delete() }
+
+        // 进程刚起，前台服务尚未运行——先把跨进程 Provider 禁用掉，维持
+        // 「Provider enabled ⇔ 服务运行」的不变量。若本进程是被某次 Provider 访问
+        // 强制拉起的（服务并没开），这一步会立刻切断链路，让复活循环自终止；
+        // 用户随后正常开启服务时 GlassForegroundService.onCreate 会重新放开。
+        runCatching { ProviderGate.disable(this) }
 
         if (safeModeRepo.snapshot()?.reason == SafeModeReason.LAST_BOOT_DID_NOT_EXIT_CLEANLY) {
             safeModeRepo.exit()

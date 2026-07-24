@@ -117,7 +117,10 @@ class GlassMicXposedModule : XposedModule() {
                 val ctx = appCtx.applicationContext ?: appCtx
                 runCatching {
                     XBridge.currentPackage = pkg
-                    XBridge.pingModuleLoaded(ctx, pkg)
+                    XBridge.apiVersion = 101
+                    // 注意：这里**不再**主动 pingModuleLoaded / 发起任何 ContentResolver 调用。
+                    // 之前每个 App 启动都 ping 一次 RuntimeProvider，是「被杀又秒复活」的主要来源之一。
+                    // 「模块已激活」的诊断状态改由 RuntimeProvider.query 在真正被查询时更新。
                     AudioRecordHook.install(this@GlassMicXposedModule, ctx, pkg)
                     val nativeOk = NativeAAudioHook.install(ctx, pkg)
                     log(Log.INFO, TAG, "hooks installed in $pkg native=$nativeOk")
