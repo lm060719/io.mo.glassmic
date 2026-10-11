@@ -110,7 +110,7 @@ val glass: GlassTokens
 
 /**
  * 页面底：基色 + 三团径向光晕；玻璃模式下再叠几颗彩色光球，让半透明卡片有东西可透。
- * 关闭液态玻璃时只剩纯色底。
+ * 关闭「卡片透明」时只剩纯色底。
  */
 @Composable
 fun GlassBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {

@@ -164,8 +164,8 @@
     <string name="settings_language_follow">Follow System</string>
     <string name="settings_language_zh">简体中文</string>
     <string name="settings_language_en">English</string>
-    <string name="settings_glass_effect">Liquid Glass</string>
-    <string name="settings_glass_effect_hint">Turn off to reduce power usage</string>
+    <string name="settings_glass_effect">Transparent cards</string>
+    <string name="settings_glass_effect_hint">Turn off for solid cards and no background glow; saves power</string>
     <string name="settings_reduce_motion">Reduce Motion</string>
 
     <string name="settings_section_tile">Quick Settings Tile</string>

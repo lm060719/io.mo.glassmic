@@ -75,7 +75,8 @@ private const val ORB_PERIOD_MS = 28_000L
 @Composable
 fun rememberOrbPhase(): State<Float> {
     val phase = remember { mutableFloatStateOf(currentOrbPhase()) }
-    if (liquidEnabled()) {
+    // 光斑只在「卡片透明」开启时绘制；关闭时或减少动画时不刷新相位
+    if (liquidEnabled() && glass.glass) {
         LaunchedEffect(Unit) {
             while (true) {
                 phase.floatValue = currentOrbPhase()
@@ -165,7 +166,7 @@ fun Modifier.sceneBackground(scene: BackdropScene, t: GlassTokens): Modifier = c
 /**
  * 磨砂玻璃填充：放在卡片的 clip 之后、卡片自身底色之前。
  * 把身后的背景画进离屏图层并模糊（Android 12+），再叠底色遮罩；
- * 关闭液态玻璃时不生效（卡片为实色）。
+ * 关闭「卡片透明」时不生效（卡片为实色）。
  */
 fun Modifier.frosted(): Modifier = composed {
     val t = glass

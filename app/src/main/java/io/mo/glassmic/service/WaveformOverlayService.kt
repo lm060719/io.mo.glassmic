@@ -97,7 +97,7 @@ class WaveformOverlayService : LifecycleService() {
         overlayHost.setContent {
             val cfgState = configStore.flow.collectAsState(initial = AppConfig.getDefaultInstance())
             val appearance = cfgState.value.appearance
-            // 与主悬浮窗共用主题外壳，跟随 App 的深浅色与液态玻璃设置
+            // 与主悬浮窗共用主题外壳，跟随 App 的深浅色与「卡片透明」设置
             GlassThemeContent(appearance.theme, appearance.glassEffect, appearance.reduceMotion) {
                 val cfg by cfgState
                 val opacity = cfg.floatingWindow.waveformOpacity.takeIf { it > 0f } ?: 0.6f

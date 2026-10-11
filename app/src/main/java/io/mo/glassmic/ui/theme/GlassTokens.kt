@@ -11,7 +11,7 @@ import androidx.compose.ui.graphics.SolidColor
  *
  * 与设计稿 `tok(dark, A, glass)` 一一对应：ink 三档文字、fill 填充、segOn 分段选中块、
  * ok / warn / err 三组状态色，以及卡片 / 底栏 / 底部面板的玻璃材质。
- * 关闭「液态玻璃」时退化为不透明实色卡片，背景去掉彩色光斑。
+ * 关闭「卡片透明」时退化为不透明实色卡片，背景去掉彩色光斑。
  */
 @Immutable
 data class GlassTokens(
@@ -123,7 +123,7 @@ fun glassTokens(dark: Boolean, glass: Boolean): GlassTokens {
         orbAlpha = if (dark) 0.7f else 0.85f,
     )
     if (glass) return base
-    // 关闭液态玻璃：不透明实色卡片 + 纯色背景
+    // 关闭「卡片透明」：不透明实色卡片 + 纯色背景
     val solid = if (dark) Color(0xFF1C1C20) else Color.White
     return base.copy(
         bgBase = if (dark) Color(0xFF111114) else Color(0xFFF8F8F6),

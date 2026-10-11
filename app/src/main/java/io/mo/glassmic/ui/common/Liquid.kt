@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
  *
  * 液态玻璃的"液体"感主要来自运动：选中指示块像水滴一样被拉长再回弹、
  * 控件按下时被挤压、松手后带一点过冲弹回。这里集中提供这些弹簧参数与工具，
- * 关闭「减少动画」或液态玻璃时全部退化为瞬时变化。
+ * 只受「减少动画」控制，与「卡片透明」无关；开启减少动画时全部退化为瞬时变化。
  */
 object LiquidSpec {
     /** 指示块领先边：快而略带回弹。 */
@@ -37,9 +37,9 @@ object LiquidSpec {
     val soft = spring<Float>(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
 }
 
-/** 动效是否启用：减少动画或关闭液态玻璃时禁用。 */
+/** 动效是否启用：只看「减少动画」，与「卡片透明」开关无关。 */
 @Composable
-fun liquidEnabled(): Boolean = !LocalReduceMotion.current && glass.glass
+fun liquidEnabled(): Boolean = !LocalReduceMotion.current
 
 /**
  * 水滴式选中指示块的左右边缘（单位：槽位序号，左边缘 = index，右边缘 = index + 1）。

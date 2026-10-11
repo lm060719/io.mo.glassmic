@@ -234,7 +234,7 @@ class FloatingWindowService : LifecycleService() {
         overlayHost.setContent {
             val cfgState = configStore.flow.collectAsState(initial = AppConfig.getDefaultInstance())
             val appearance = cfgState.value.appearance
-            // 悬浮窗不走 GlassMicTheme（需要 ViewModel），直接用同一套主题外壳：跟随 App 的深浅色与液态玻璃设置
+            // 悬浮窗不走 GlassMicTheme（需要 ViewModel），直接用同一套主题外壳：跟随 App 的深浅色与「卡片透明」设置
             GlassThemeContent(appearance.theme, appearance.glassEffect, appearance.reduceMotion) {
                 val rt by runtime.flow.collectAsState()
                 val cfg by cfgState
