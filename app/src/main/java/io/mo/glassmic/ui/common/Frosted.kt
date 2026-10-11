@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.lerp
@@ -228,13 +229,18 @@ private class SceneNode(
             val dp = density
             if (frosted) {
                 val l = layer ?: requireGraphicsContext().createGraphicsLayer().also { layer = it }
+                l.clip = true
                 l.renderEffect = if (blurPx >= 1f) BlurEffect(blurPx, blurPx, TileMode.Clamp) else null
                 l.record(Density(dp, fontScale), layoutDirection, IntSize(size.width.roundToInt(), size.height.roundToInt())) {
                     translate(-pos.x, -pos.y) { drawScene(scene, t, root, dp) }
                 }
                 drawLayer(l)
             } else {
-                translate(-pos.x, -pos.y) { drawScene(scene, t, root, dp) }
+                // 必须裁到自身范围：场景是按整屏尺寸画的，不裁的话一个还在屏幕外滑动的页面
+                // 会把整屏背景盖在别的页面上（进入 / 返回二级页时主页整段消失就是这个原因）
+                clipRect(0f, 0f, size.width, size.height) {
+                    translate(-pos.x, -pos.y) { drawScene(scene, t, root, dp) }
+                }
             }
         }
         if (frosted) drawRect(dim)
