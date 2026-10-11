@@ -32,6 +32,7 @@ import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -91,8 +92,10 @@ private fun currentOrbPhase(): Float =
 /**
  * 按屏幕坐标绘制背景场景：图片（等同 ContentScale.Crop）或默认光斑。
  * [root] 为整个窗口的尺寸；调用方负责把画布平移到屏幕原点。
+ * [dp] 为 1dp 对应的像素数，由调用方传入：在 GraphicsLayer 录制块里读取 DrawScope.density
+ * 会无限递归（StackOverflowError），所以这里不读 density。
  */
-fun DrawScope.drawScene(scene: BackdropScene, t: GlassTokens, root: Size) {
+fun DrawScope.drawScene(scene: BackdropScene, t: GlassTokens, root: Size, dp: Float) {
     val image = scene.image
     if (image != null) {
         val scale = maxOf(root.width / image.width, root.height / image.height)
@@ -133,7 +136,7 @@ fun DrawScope.drawScene(scene: BackdropScene, t: GlassTokens, root: Size) {
             radius = r, center = Offset(cx, cy)
         )
     }
-    val d = density
+    val d = dp
     val a = 26f * d
     orb(pick(0, Color(0xFF3D7AFF)), 55f * d + a * sin(ph), 185f * d + a * cos(ph * 2), 125f * d)
     orb(pick(1, Color(0xFFFF8A3D)), w - 45f * d + a * cos(ph), 345f * d + a * sin(ph * 2), 95f * d)
@@ -155,7 +158,7 @@ fun Modifier.sceneBackground(scene: BackdropScene, t: GlassTokens): Modifier = c
         }
         .drawBehind {
             if (root.width <= 0f) return@drawBehind
-            translate(-pos.x, -pos.y) { drawScene(scene, t, root) }
+            translate(-pos.x, -pos.y) { drawScene(scene, t, root, density) }
         }
 }
 
@@ -185,8 +188,12 @@ fun Modifier.frosted(): Modifier = composed {
         .drawBehind {
             if (root.width > 0f) {
                 layer.renderEffect = if (canBlur && blurPx >= 1f) BlurEffect(blurPx, blurPx, TileMode.Clamp) else null
-                layer.record {
-                    translate(-pos.x, -pos.y) { drawScene(scene, t, root) }
+                // 先在录制块外取好密度，并给图层一个独立的 Density：
+                // 直接 layer.record { } 会把当前 DrawScope 自身当作图层的密度来源，
+                // 录制块里一读 density 就会自己调用自己导致栈溢出。
+                val dp = density
+                layer.record(Density(dp, fontScale), layoutDirection, IntSize(size.width.roundToInt(), size.height.roundToInt())) {
+                    translate(-pos.x, -pos.y) { drawScene(scene, t, root, dp) }
                 }
                 drawLayer(layer)
             }
