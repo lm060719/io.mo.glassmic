@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.currentBackStackEntryAsState
 import io.mo.glassmic.ui.common.glass
+import io.mo.glassmic.ui.common.frosted
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -315,6 +316,7 @@ private fun GlassTabBar(position: Float, onSelect: (Int) -> Unit, modifier: Modi
         modifier = modifier
             .shadow(if (t.glass) 18.dp else 8.dp, shape, ambientColor = t.shadowColor, spotColor = t.shadowColor)
             .clip(shape)
+            .frosted()
             .background(t.bar)
             .border(BorderStroke(1.dp, t.rim), shape)
             .padding(6.dp)

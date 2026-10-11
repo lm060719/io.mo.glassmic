@@ -168,9 +168,9 @@ message Appearance {
   BackgroundMode background_mode = 6;
   // 自选图片的相对路径（filesDir 下，如 background/custom_xxx.jpg）
   string background_image_path = 7;
-  // 背景模糊程度 0..1（未设置时按 0.5）
+  // 卡片磨砂层模糊程度 0..1（未设置时按 0.5），背景本身不模糊
   optional float background_blur = 8;
-  // 背景暗化/提亮遮罩强度 0..1（未设置时按 0.35），保证卡片文字可读
+  // 卡片磨砂层遮罩强度 0..1（未设置时按 0.35），保证卡片文字可读
   optional float background_dim = 9;
 }
 

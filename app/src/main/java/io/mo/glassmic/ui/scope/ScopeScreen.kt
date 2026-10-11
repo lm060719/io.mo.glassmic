@@ -67,6 +67,7 @@ import io.mo.glassmic.ui.common.MonoFamily
 import io.mo.glassmic.ui.common.Segmented
 import io.mo.glassmic.ui.common.SoftButton
 import io.mo.glassmic.ui.common.glass
+import io.mo.glassmic.ui.common.frosted
 
 @Composable
 fun ScopeScreen(
@@ -215,6 +216,7 @@ private fun SearchField(query: String, onQuery: (String) -> Unit, modifier: Modi
             .fillMaxWidth()
             .height(46.dp)
             .clip(shape)
+            .frosted()
             .background(t.card)
             .border(BorderStroke(1.dp, t.border), shape)
             .padding(horizontal = 16.dp),
@@ -307,6 +309,7 @@ private fun CardSegment(top: Boolean, bottom: Boolean, content: @Composable () -
         Modifier
             .fillMaxWidth()
             .clip(shape)
+            .frosted()
             .background(glass.cardFlat)
             .padding(horizontal = 14.dp)
     ) { content() }

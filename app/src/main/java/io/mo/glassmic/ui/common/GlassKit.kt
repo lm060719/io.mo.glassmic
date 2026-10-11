@@ -116,98 +116,18 @@ val glass: GlassTokens
 fun GlassBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     val t = glass
     val backdrop = LocalPageBackdrop.current
-    val image = backdrop.image
-    Box(modifier.fillMaxSize().background(t.bgBase)) {
-        if (image != null) {
-            ImageBackdrop(image, backdrop.blur, backdrop.dim)
-        } else {
-            OrbBackdrop(backdrop.glowColors)
-        }
-        content()
+    val phase = rememberOrbPhase()
+    val scene = remember(backdrop.image, backdrop.glowColors, phase) {
+        BackdropScene(backdrop.image, backdrop.glowColors, phase)
     }
-}
-
-private const val ORB_PERIOD_MS = 28_000L
-
-/** 自选图片 / 手机壁纸背景：铺满裁切 → 模糊 → 遮罩（深色压暗、浅色提亮）。 */
-@Composable
-private fun ImageBackdrop(image: ImageBitmap, blur: Float, dim: Float) {
-    val t = glass
-    // Android 12 以下不支持 Modifier.blur，用更重的遮罩补偿可读性
-    val canBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    Image(
-        bitmap = image,
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
-        modifier = Modifier
-            .fillMaxSize()
-            .then(if (canBlur && blur > 0f) Modifier.blur((blur * 40f).dp, BlurredEdgeTreatment.Rectangle) else Modifier)
-    )
-    val alpha = (dim + if (!canBlur && blur > 0f) 0.15f else 0f).coerceIn(0f, 0.9f)
-    Box(Modifier.fillMaxSize().background((if (t.isDark) Color.Black else Color.White).copy(alpha = alpha)))
-}
-
-/**
- * 默认背景：三团径向光晕 + 几颗缓慢漂移的彩色光球。
- * [tint] 非空时（读不到壁纸图片、只取到壁纸主色）用它替换默认配色。
- */
-@Composable
-private fun OrbBackdrop(tint: List<Color>) {
-    val t = glass
-    if (!t.glass) return
-    // 光球缓慢漂移：玻璃后面"有东西在流动"。减少动画时静止。
-    // 相位按统一时钟计算而不是各自从 0 开始：外层与页面各画一层背景，
-    // 页面切换淡入淡出时两层光球位置完全重合，看不出接缝。
-    val drift = remember { mutableFloatStateOf(0f) }
-    val animate = liquidEnabled()
-    if (animate) {
-        LaunchedEffect(Unit) {
-            while (true) withFrameMillis {
-                drift.floatValue = (SystemClock.uptimeMillis() % ORB_PERIOD_MS) / ORB_PERIOD_MS.toFloat() * (2 * PI).toFloat()
-            }
+    // 背景本身保持清晰；「卡片模糊 / 卡片遮罩」只作用在卡片的磨砂层里（见 Modifier.frosted）
+    Box(modifier.fillMaxSize().background(t.bgBase).sceneBackground(scene, t)) {
+        if (backdrop.image != null) {
+            // 图片背景上叠一层很淡的固定遮罩，保证卡片外的页面标题仍然清楚
+            Box(Modifier.fillMaxSize().background((if (t.isDark) Color.Black else Color.White).copy(alpha = 0.12f)))
         }
+        CompositionLocalProvider(LocalBackdropScene provides scene) { content() }
     }
-    fun pick(i: Int, fallback: Color) = if (tint.isEmpty()) fallback else tint[i % tint.size]
-    val glowA = pick(0, t.glowBlue).copy(alpha = t.glowBlue.alpha)
-    val glowB = pick(1, t.glowOrange).copy(alpha = t.glowOrange.alpha)
-    val glowC = pick(2, t.glowPurple).copy(alpha = t.glowPurple.alpha)
-    val orbs = listOf(
-        Color(0xFF3D7AFF), Color(0xFFFF8A3D), Color(0xFF7B5CFF), Color(0xFF22B5C4)
-    ).mapIndexed { i, c -> pick(i, c) }
-    Box(
-        Modifier.fillMaxSize().drawBehind {
-            val ph = if (animate) drift.floatValue else 0f
-            val w = size.width
-            val h = size.height
-            fun glow(c: Color, cx: Float, cy: Float, r: Float) = drawCircle(
-                Brush.radialGradient(listOf(c, Color.Transparent), center = Offset(cx, cy), radius = r),
-                radius = r, center = Offset(cx, cy)
-            )
-            glow(glowA, 0f, 0f, w * 0.95f)
-            glow(glowB, w, h * 0.42f, w * 0.8f)
-            glow(glowC, w * 0.15f, h, w * 1.0f)
-            // 彩色光球：中心偏亮、边缘淡出
-            fun orb(edge: Color, cx: Float, cy: Float, r: Float) {
-                val core = lerp(edge, Color.White, 0.55f)
-                drawCircle(
-                    Brush.radialGradient(
-                        0f to core.copy(alpha = t.orbAlpha),
-                        0.55f to edge.copy(alpha = t.orbAlpha),
-                        0.71f to edge.copy(alpha = 0f),
-                        center = Offset(cx - r * 0.3f, cy - r * 0.4f),
-                        radius = r * 1.4f
-                    ),
-                    radius = r, center = Offset(cx, cy)
-                )
-            }
-            val d = density
-            val a = 26f * d
-            orb(orbs[0], 55f * d + a * sin(ph), 185f * d + a * cos(ph * 2), 125f * d)
-            orb(orbs[1], w - 45f * d + a * cos(ph), 345f * d + a * sin(ph * 2), 95f * d)
-            orb(orbs[2], 130f * d - a * sin(ph * 2), 620f * d + a * cos(ph), 100f * d)
-            orb(orbs[3], w - 60f * d - a * cos(ph * 2), 790f * d - a * sin(ph), 90f * d)
-        }
-    )
 }
 
 /**
@@ -258,7 +178,7 @@ fun GlassCard(
             .then(if (onClick != null) Modifier.liquidClickable(pressed = 0.98f, onClick = onClick) else Modifier)
             .shadow(elevation, shape, ambientColor = t.shadowColor, spotColor = t.shadowColor)
             .clip(shape)
-            .background(t.bgBase.copy(alpha = if (t.glass) 0.35f else 0f))
+            .frosted()
             .background(t.card)
             .border(BorderStroke(1.dp, t.rim), shape)
             .drawWithContent {
@@ -390,6 +310,7 @@ fun GlassIconButton(
             .liquidClickable(pressed = 0.9f, onClick = onClick)
             .size(size)
             .clip(CircleShape)
+            .frosted()
             .background(t.card)
             .border(BorderStroke(1.dp, t.rim), CircleShape),
         contentAlignment = Alignment.Center
@@ -668,6 +589,7 @@ fun OutlineGlassButton(text: String, onClick: () -> Unit, modifier: Modifier = M
             .fillMaxWidth()
             .height(height)
             .clip(shape)
+            .frosted()
             .background(t.card)
             .border(BorderStroke(1.dp, t.rim), shape),
         contentAlignment = Alignment.Center

@@ -473,7 +473,7 @@
     <string name="settings_background_wallpaper_failed">Cannot read the wallpaper; using the default background</string>
     <string name="settings_background_wallpaper_loading">Reading wallpaper…</string>
     <string name="settings_background_refresh">Reload</string>
-    <string name="settings_background_blur">Background blur</string>
-    <string name="settings_background_dim">Background dimming</string>
-    <string name="settings_background_dim_hint">Darkens in dark mode, lightens in light mode to keep text legible</string>
+    <string name="settings_background_blur">Card blur</string>
+    <string name="settings_background_dim">Card tint</string>
+    <string name="settings_background_dim_hint">How solid the card backing is: higher is more legible, lower more see-through</string>
 </resources>

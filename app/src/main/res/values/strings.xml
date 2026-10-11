@@ -473,7 +473,7 @@
     <string name="settings_background_wallpaper_failed">无法读取壁纸，已回退默认背景</string>
     <string name="settings_background_wallpaper_loading">正在读取壁纸…</string>
     <string name="settings_background_refresh">重新读取</string>
-    <string name="settings_background_blur">背景模糊</string>
-    <string name="settings_background_dim">背景遮罩</string>
-    <string name="settings_background_dim_hint">深色模式压暗、浅色模式提亮，保证文字清晰</string>
+    <string name="settings_background_blur">卡片模糊</string>
+    <string name="settings_background_dim">卡片遮罩</string>
+    <string name="settings_background_dim_hint">卡片底色的深浅：越高文字越清晰，越低越通透</string>
 </resources>

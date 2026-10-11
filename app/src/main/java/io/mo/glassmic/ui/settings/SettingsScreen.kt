@@ -564,10 +564,8 @@ private fun BackgroundRows(
         }
         else -> Unit
     }
-    // 模糊 / 遮罩只对图片背景有意义
-    val hasImage = mode == BackgroundMode.BACKGROUND_IMAGE ||
-        (mode == BackgroundMode.BACKGROUND_WALLPAPER && wallpaperStatus == WallpaperStatus.IMAGE)
-    if (hasImage) {
+    // 卡片模糊 / 遮罩作用在卡片的磨砂层上（背景本身保持清晰），关闭液态玻璃时卡片为实色，不显示
+    if (appearance.glassEffect) {
         val blur = if (appearance.hasBackgroundBlur()) appearance.backgroundBlur else PageBackdrop.DEFAULT_BLUR
         StackedRow(stringResource(R.string.settings_background_blur), value = "%.0f%%".format(blur * 100)) {
             GlassSlider(value = blur, onValueChange = onBlur)
