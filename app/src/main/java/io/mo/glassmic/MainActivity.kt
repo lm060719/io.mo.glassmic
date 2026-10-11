@@ -49,6 +49,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.currentBackStackEntryAsState
 import io.mo.glassmic.ui.common.glass
+import android.graphics.drawable.ColorDrawable
+import androidx.compose.ui.graphics.toArgb
+import io.mo.glassmic.ui.common.GlassBackground
 import io.mo.glassmic.ui.common.liquidClickable
 import io.mo.glassmic.ui.common.rememberLiquidEdges
 import androidx.compose.foundation.layout.height
@@ -105,7 +108,10 @@ class MainActivity : ComponentActivity() {
             GlassMicTheme {
                 // 状态栏 / 导航栏图标跟随 App 自己的深浅色，而不是系统设置
                 val dark = LocalGlassTokens.current.isDark
+                val windowBg = LocalGlassTokens.current.bgBase
                 SideEffect {
+                    // 窗口底色设为页面底色，避免任何透明瞬间露出系统默认的白底
+                    window.setBackgroundDrawable(ColorDrawable(windowBg.toArgb()))
                     WindowCompat.getInsetsController(window, window.decorView).apply {
                         isAppearanceLightStatusBars = !dark
                         isAppearanceLightNavigationBars = !dark
@@ -117,7 +123,8 @@ class MainActivity : ComponentActivity() {
                 // 开屏动画只在冷启动播放；系统“降低动画”时跳过
                 val reduceMotion = LocalReduceMotion.current
                 var showSplash by rememberSaveable { mutableStateOf(savedInstanceState == null) }
-                Box(Modifier.fillMaxSize()) {
+                // 导航外层再垫一层同样的玻璃背景：页面淡入淡出时露出的是同一张背景而不是白底
+                GlassBackground {
                     AppNavHost(nav, gate)
                     if (showSplash && !reduceMotion) SplashOverlay(onFinished = { showSplash = false })
                 }
@@ -206,14 +213,14 @@ private fun AppNavHost(nav: NavHostController, gate: GateDecision) {
             enterTransition = {
                 when {
                     reduceMotion -> EnterTransition.None
-                    isTab(initialState) && isTab(targetState) -> fadeIn(tween(180, delayMillis = 40))
+                    isTab(initialState) && isTab(targetState) -> fadeIn(tween(160))
                     else -> slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { it }
                 }
             },
             exitTransition = {
                 when {
                     reduceMotion -> ExitTransition.None
-                    isTab(initialState) && isTab(targetState) -> fadeOut(tween(60))
+                    isTab(initialState) && isTab(targetState) -> fadeOut(tween(120))
                     else -> slideOutHorizontally(tween(320, easing = FastOutSlowInEasing)) { -it / 4 } +
                         fadeOut(tween(320), targetAlpha = 0.6f)
                 }

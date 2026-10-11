@@ -86,6 +86,10 @@ import androidx.compose.ui.unit.sp
 import io.mo.glassmic.ui.theme.GlassTokens
 import io.mo.glassmic.ui.theme.LocalGlassTokens
 import io.mo.glassmic.ui.theme.LocalPageBackdrop
+import android.os.SystemClock
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.withFrameMillis
 import android.os.Build
 import androidx.compose.foundation.Image
 import androidx.compose.ui.draw.BlurredEdgeTreatment
@@ -122,6 +126,8 @@ fun GlassBackground(modifier: Modifier = Modifier, content: @Composable BoxScope
     }
 }
 
+private const val ORB_PERIOD_MS = 28_000L
+
 /** 自选图片 / 手机壁纸背景：铺满裁切 → 模糊 → 遮罩（深色压暗、浅色提亮）。 */
 @Composable
 private fun ImageBackdrop(image: ImageBitmap, blur: Float, dim: Float) {
@@ -149,14 +155,17 @@ private fun OrbBackdrop(tint: List<Color>) {
     val t = glass
     if (!t.glass) return
     // 光球缓慢漂移：玻璃后面"有东西在流动"。减少动画时静止。
-    val drift = if (liquidEnabled()) {
-        rememberInfiniteTransition(label = "orbDrift").animateFloat(
-            initialValue = 0f,
-            targetValue = (2 * PI).toFloat(),
-            animationSpec = infiniteRepeatable(tween(28_000, easing = LinearEasing)),
-            label = "orbPhase"
-        )
-    } else null
+    // 相位按统一时钟计算而不是各自从 0 开始：外层与页面各画一层背景，
+    // 页面切换淡入淡出时两层光球位置完全重合，看不出接缝。
+    val drift = remember { mutableFloatStateOf(0f) }
+    val animate = liquidEnabled()
+    if (animate) {
+        LaunchedEffect(Unit) {
+            while (true) withFrameMillis {
+                drift.floatValue = (SystemClock.uptimeMillis() % ORB_PERIOD_MS) / ORB_PERIOD_MS.toFloat() * (2 * PI).toFloat()
+            }
+        }
+    }
     fun pick(i: Int, fallback: Color) = if (tint.isEmpty()) fallback else tint[i % tint.size]
     val glowA = pick(0, t.glowBlue).copy(alpha = t.glowBlue.alpha)
     val glowB = pick(1, t.glowOrange).copy(alpha = t.glowOrange.alpha)
@@ -166,7 +175,7 @@ private fun OrbBackdrop(tint: List<Color>) {
     ).mapIndexed { i, c -> pick(i, c) }
     Box(
         Modifier.fillMaxSize().drawBehind {
-            val ph = drift?.value ?: 0f
+            val ph = if (animate) drift.floatValue else 0f
             val w = size.width
             val h = size.height
             fun glow(c: Color, cx: Float, cy: Float, r: Float) = drawCircle(
