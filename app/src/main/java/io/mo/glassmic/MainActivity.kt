@@ -215,9 +215,11 @@ private fun AppNavHost(nav: NavHostController, gate: GateDecision) {
             else slideOutHorizontally(tween(320, easing = FastOutSlowInEasing)) { -it / 4 } +
                 fadeOut(tween(320), targetAlpha = 0.6f)
         },
+        // 返回时底页从 60% 亮度渐渐恢复，与进入时的变暗对称
         popEnterTransition = {
             if (reduceMotion) EnterTransition.None
-            else slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { -it / 4 }
+            else slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { -it / 4 } +
+                fadeIn(tween(320), initialAlpha = 0.6f)
         },
         popExitTransition = {
             if (reduceMotion) ExitTransition.None

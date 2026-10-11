@@ -13,6 +13,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.node.requireGraphicsContext
+import androidx.compose.ui.node.invalidateDraw
+import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.GlobalPositionAwareModifierNode
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -149,19 +157,8 @@ fun DrawScope.drawScene(scene: BackdropScene, t: GlassTokens, root: Size, dp: Fl
  * 背景层：按屏幕坐标绘制场景（自身在屏幕上的偏移会被抵消），
  * 这样无论页面怎么滑、怎么推入，背景都和卡片里的磨砂层严格对齐。
  */
-fun Modifier.sceneBackground(scene: BackdropScene, t: GlassTokens): Modifier = composed {
-    var pos by remember { mutableStateOf(Offset.Zero) }
-    var root by remember { mutableStateOf(Size.Zero) }
-    this
-        .onGloballyPositioned { c ->
-            pos = c.positionInRoot()
-            root = c.findRootCoordinates().size.toSize()
-        }
-        .drawBehind {
-            if (root.width <= 0f) return@drawBehind
-            translate(-pos.x, -pos.y) { drawScene(scene, t, root, density) }
-        }
-}
+fun Modifier.sceneBackground(scene: BackdropScene, t: GlassTokens): Modifier =
+    this then SceneElement(scene, t, frosted = false, blurPx = 0f, dim = Color.Transparent)
 
 /**
  * 磨砂玻璃填充：放在卡片的 clip 之后、卡片自身底色之前。
@@ -173,31 +170,79 @@ fun Modifier.frosted(): Modifier = composed {
     val scene = LocalBackdropScene.current
     if (!t.glass || scene == null) return@composed this
     val backdrop = LocalPageBackdrop.current
-    val layer = rememberGraphicsLayer()
-    var pos by remember { mutableStateOf(Offset.Zero) }
-    var root by remember { mutableStateOf(Size.Zero) }
     val canBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val blurPx = with(LocalDensity.current) { (backdrop.blur * 40f).dp.toPx() }
     // 不支持模糊的系统用更重的遮罩补偿可读性
     val dim = (backdrop.dim + if (!canBlur && backdrop.blur > 0f) 0.15f else 0f).coerceIn(0f, 0.95f)
-    val dimColor = t.bgBase.copy(alpha = dim)
-    this
-        .onGloballyPositioned { c ->
-            pos = c.positionInRoot()
-            root = c.findRootCoordinates().size.toSize()
+    this then SceneElement(
+        scene, t, frosted = true,
+        blurPx = if (canBlur) blurPx else 0f,
+        dim = t.bgBase.copy(alpha = dim)
+    )
+}
+
+private data class SceneElement(
+    val scene: BackdropScene,
+    val t: GlassTokens,
+    val frosted: Boolean,
+    val blurPx: Float,
+    val dim: Color,
+) : ModifierNodeElement<SceneNode>() {
+    override fun create() = SceneNode(scene, t, frosted, blurPx, dim)
+    override fun update(node: SceneNode) {
+        node.scene = scene; node.t = t; node.frosted = frosted; node.blurPx = blurPx; node.dim = dim
+        node.invalidateDraw()
+    }
+}
+
+/**
+ * 按屏幕坐标画背景（[frosted] 为 true 时画进离屏图层并模糊、再叠遮罩）。
+ *
+ * 位置在布局阶段（onGloballyPositioned）一变化就直接 invalidateDraw，同一帧内重画；
+ * 以前写进 State 再由绘制读取，会晚一帧，页面滑动时卡片里的磨砂背景跟不上、看起来在"游"。
+ */
+private class SceneNode(
+    var scene: BackdropScene,
+    var t: GlassTokens,
+    var frosted: Boolean,
+    var blurPx: Float,
+    var dim: Color,
+) : Modifier.Node(), DrawModifierNode, GlobalPositionAwareModifierNode {
+    private var pos = Offset.Zero
+    private var root = Size.Zero
+    private var layer: GraphicsLayer? = null
+
+    override fun onGloballyPositioned(coordinates: LayoutCoordinates) {
+        val p = coordinates.positionInRoot()
+        val r = coordinates.findRootCoordinates().size.toSize()
+        if (p != pos || r != root) {
+            pos = p
+            root = r
+            invalidateDraw()
         }
-        .drawBehind {
-            if (root.width > 0f) {
-                layer.renderEffect = if (canBlur && blurPx >= 1f) BlurEffect(blurPx, blurPx, TileMode.Clamp) else null
-                // 先在录制块外取好密度，并给图层一个独立的 Density：
-                // 直接 layer.record { } 会把当前 DrawScope 自身当作图层的密度来源，
-                // 录制块里一读 density 就会自己调用自己导致栈溢出。
-                val dp = density
-                layer.record(Density(dp, fontScale), layoutDirection, IntSize(size.width.roundToInt(), size.height.roundToInt())) {
+    }
+
+    override fun ContentDrawScope.draw() {
+        if (root.width > 0f) {
+            // 先在录制块外取好密度：录制块内读 DrawScope.density 会无限递归
+            val dp = density
+            if (frosted) {
+                val l = layer ?: requireGraphicsContext().createGraphicsLayer().also { layer = it }
+                l.renderEffect = if (blurPx >= 1f) BlurEffect(blurPx, blurPx, TileMode.Clamp) else null
+                l.record(Density(dp, fontScale), layoutDirection, IntSize(size.width.roundToInt(), size.height.roundToInt())) {
                     translate(-pos.x, -pos.y) { drawScene(scene, t, root, dp) }
                 }
-                drawLayer(layer)
+                drawLayer(l)
+            } else {
+                translate(-pos.x, -pos.y) { drawScene(scene, t, root, dp) }
             }
-            drawRect(dimColor)
         }
+        if (frosted) drawRect(dim)
+        drawContent()
+    }
+
+    override fun onDetach() {
+        layer?.let { requireGraphicsContext().releaseGraphicsLayer(it) }
+        layer = null
+    }
 }

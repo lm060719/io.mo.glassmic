@@ -70,6 +70,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -151,7 +152,21 @@ fun GlassPage(
         if (toast != null) GlassToastHost(toast, Modifier.align(Alignment.TopCenter).statusBarsPadding())
     }
     if (LocalSharedBackdrop.current) Box(Modifier.fillMaxSize(), content = body)
-    else GlassBackground(content = body)
+    else GlassBackground(Modifier.leadingEdgeShadow(), content = body)
+}
+
+/**
+ * 独立页面（二级页）左缘外侧的一道阴影：背景按屏幕坐标对齐后，页面滑入滑出时
+ * 自身边缘与底下的页面完全融在一起，看不出是一整张页面在移动；有这道阴影才像被推走的纸。
+ * 页面停在原位时阴影在屏幕外，看不到。
+ */
+private fun Modifier.leadingEdgeShadow(): Modifier = drawBehind {
+    val w = 28.dp.toPx()
+    drawRect(
+        Brush.horizontalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.22f)), startX = -w, endX = 0f),
+        topLeft = Offset(-w, 0f),
+        size = Size(w, size.height)
+    )
 }
 
 /** 列表页通用内边距：左右 18，顶部 12，底部给浮动底栏留 120。 */
