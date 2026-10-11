@@ -49,6 +49,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.currentBackStackEntryAsState
 import io.mo.glassmic.ui.common.glass
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.rememberCoroutineScope
+import io.mo.glassmic.ui.common.LocalSharedBackdrop
+import io.mo.glassmic.ui.common.rememberLiquidSpan
+import kotlin.math.roundToInt
 import android.graphics.drawable.ColorDrawable
 import androidx.compose.ui.graphics.toArgb
 import io.mo.glassmic.ui.common.GlassBackground
@@ -163,22 +171,23 @@ class GateViewModel @Inject constructor(
 
 object Routes {
     const val ONBOARDING = "onboarding"
-    const val HOME = "home"
-    const val LIBRARY = "library"
+    /** 主界面：麦克风 / 音频库 / 设置三个标签页，左右滑动切换。 */
+    const val MAIN = "main"
     const val SCOPE = "scope"
-    const val SETTINGS = "settings"
     const val AI_TTS = "ai_tts"
     const val SAFE_MODE = "safemode"
     const val DIAGNOSTICS = "diagnostics"
 }
 
-private data class TabSpec(val route: String, val label: Int, val icon: ImageVector)
+private data class TabSpec(val label: Int, val icon: ImageVector)
 
 private val TABS = listOf(
-    TabSpec(Routes.HOME, R.string.tab_mic, Icons.Rounded.Mic),
-    TabSpec(Routes.LIBRARY, R.string.tab_library, Icons.Rounded.MusicNote),
-    TabSpec(Routes.SETTINGS, R.string.tab_settings, Icons.Rounded.Tune)
+    TabSpec(R.string.tab_mic, Icons.Rounded.Mic),
+    TabSpec(R.string.tab_library, Icons.Rounded.MusicNote),
+    TabSpec(R.string.tab_settings, Icons.Rounded.Tune)
 )
+
+private const val PAGE_LIBRARY = 1
 
 @Composable
 private fun AppNavHost(nav: NavHostController, gate: GateDecision) {
@@ -188,106 +197,118 @@ private fun AppNavHost(nav: NavHostController, gate: GateDecision) {
     val start = when {
         gate.safeMode -> Routes.SAFE_MODE
         !gate.onboardingCompleted -> Routes.ONBOARDING
-        else -> Routes.HOME
+        else -> Routes.MAIN
     }
 
-    val backStack by nav.currentBackStackEntryAsState()
-    val currentRoute = backStack?.destination?.route
-    val switchTab: (String) -> Unit = { route ->
-        nav.navigate(route) {
-            // 首页始终在栈底（引导 / 安全模式进入首页时都会弹掉自己），以它为锚避免切 tab 时堆栈累积
-            popUpTo(Routes.HOME) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
+    val reduceMotion = LocalReduceMotion.current
+    NavHost(
+        nav,
+        startDestination = start,
+        // 进入二级页用 iOS 式右侧推入 + 底页视差；标签之间的切换在 MainPager 里左右滑动完成。
+        enterTransition = {
+            if (reduceMotion) EnterTransition.None
+            else slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { it }
+        },
+        exitTransition = {
+            if (reduceMotion) ExitTransition.None
+            else slideOutHorizontally(tween(320, easing = FastOutSlowInEasing)) { -it / 4 } +
+                fadeOut(tween(320), targetAlpha = 0.6f)
+        },
+        popEnterTransition = {
+            if (reduceMotion) EnterTransition.None
+            else slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { -it / 4 }
+        },
+        popExitTransition = {
+            if (reduceMotion) ExitTransition.None
+            else slideOutHorizontally(tween(320, easing = FastOutSlowInEasing)) { it }
         }
-    }
-
-    Box(Modifier.fillMaxSize()) {
-        val reduceMotion = LocalReduceMotion.current
-        val isTab: (NavBackStackEntry) -> Boolean = { e -> TABS.any { it.route == e.destination.route } }
-        NavHost(
-            nav,
-            startDestination = start,
-            // 默认的 700ms 交叉淡化会让两页玻璃背景半透明叠在一起，显得发灰发糊：
-            // 标签之间用很短的淡入（旧页几乎立刻退场），进入二级页用 iOS 式右侧推入 + 底页视差。
-            enterTransition = {
-                when {
-                    reduceMotion -> EnterTransition.None
-                    isTab(initialState) && isTab(targetState) -> fadeIn(tween(160))
-                    else -> slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { it }
+    ) {
+        composable(Routes.ONBOARDING) {
+            OnboardingFlow(onCompleted = {
+                nav.navigate(Routes.MAIN) {
+                    popUpTo(Routes.ONBOARDING) { inclusive = true }
                 }
-            },
-            exitTransition = {
-                when {
-                    reduceMotion -> ExitTransition.None
-                    isTab(initialState) && isTab(targetState) -> fadeOut(tween(120))
-                    else -> slideOutHorizontally(tween(320, easing = FastOutSlowInEasing)) { -it / 4 } +
-                        fadeOut(tween(320), targetAlpha = 0.6f)
-                }
-            },
-            popEnterTransition = {
-                if (reduceMotion) EnterTransition.None
-                else slideInHorizontally(tween(320, easing = FastOutSlowInEasing)) { -it / 4 }
-            },
-            popExitTransition = {
-                if (reduceMotion) ExitTransition.None
-                else slideOutHorizontally(tween(320, easing = FastOutSlowInEasing)) { it }
-            }
-        ) {
-            composable(Routes.ONBOARDING) {
-                OnboardingFlow(onCompleted = {
-                    nav.navigate(Routes.HOME) {
-                        popUpTo(Routes.ONBOARDING) { inclusive = true }
-                    }
-                })
-            }
-            composable(Routes.HOME) {
-                HomeScreen(
-                    onOpenLibrary = { switchTab(Routes.LIBRARY) },
-                    onOpenScope = { nav.navigate(Routes.SCOPE) },
-                    onOpenDiagnostic = { nav.navigate(Routes.DIAGNOSTICS) }
-                )
-            }
-            composable(Routes.LIBRARY) { LibraryScreen() }
-            composable(Routes.SCOPE) { ScopeScreen(onBack = { nav.popBackStack() }) }
-            composable(Routes.SETTINGS) {
-                SettingsScreen(
-                    onOpenScope = { nav.navigate(Routes.SCOPE) },
-                    onOpenAiTts = { nav.navigate(Routes.AI_TTS) },
-                    onOpenDiagnostic = { nav.navigate(Routes.DIAGNOSTICS) }
-                )
-            }
-            composable(Routes.AI_TTS) { AiTtsSettingsScreen(onBack = { nav.popBackStack() }) }
-            composable(Routes.DIAGNOSTICS) { DiagnosticScreen(onBack = { nav.popBackStack() }) }
-            composable(Routes.SAFE_MODE) {
-                SafeModeScreen(onExitComplete = {
-                    nav.navigate(Routes.HOME) {
-                        popUpTo(Routes.SAFE_MODE) { inclusive = true }
-                    }
-                })
-            }
+            })
         }
-
-        if (TABS.any { it.route == currentRoute }) {
-            GlassTabBar(
-                current = currentRoute,
-                onSelect = switchTab,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 16.dp)
+        composable(Routes.MAIN) {
+            MainPager(
+                onOpenScope = { nav.navigate(Routes.SCOPE) },
+                onOpenAiTts = { nav.navigate(Routes.AI_TTS) },
+                onOpenDiagnostic = { nav.navigate(Routes.DIAGNOSTICS) }
             )
+        }
+        composable(Routes.SCOPE) { ScopeScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.AI_TTS) { AiTtsSettingsScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.DIAGNOSTICS) { DiagnosticScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.SAFE_MODE) {
+            SafeModeScreen(onExitComplete = {
+                nav.navigate(Routes.MAIN) {
+                    popUpTo(Routes.SAFE_MODE) { inclusive = true }
+                }
+            })
         }
     }
 }
 
-/** 浮动玻璃底栏：三枚 92×52 胶囊，选中块像水滴一样在标签间流动。 */
+/**
+ * 三个标签页：左右滑动切换，点底栏也是滑过去。
+ * 背景由外层统一绘制、保持不动（[LocalSharedBackdrop]），滑动时只有页面内容移动。
+ */
 @Composable
-private fun GlassTabBar(current: String?, onSelect: (String) -> Unit, modifier: Modifier = Modifier) {
+private fun MainPager(
+    onOpenScope: () -> Unit,
+    onOpenAiTts: () -> Unit,
+    onOpenDiagnostic: () -> Unit
+) {
+    val pager = rememberPagerState { TABS.size }
+    val scope = rememberCoroutineScope()
+    val reduceMotion = LocalReduceMotion.current
+    val goTo: (Int) -> Unit = { page ->
+        scope.launch { if (reduceMotion) pager.scrollToPage(page) else pager.animateScrollToPage(page) }
+    }
+    // 返回键：不在第一页时先回到麦克风页，再按才退出
+    BackHandler(enabled = pager.currentPage != 0) { goTo(0) }
+
+    Box(Modifier.fillMaxSize()) {
+        CompositionLocalProvider(LocalSharedBackdrop provides true) {
+            HorizontalPager(
+                state = pager,
+                beyondViewportPageCount = TABS.size - 1,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                when (page) {
+                    0 -> HomeScreen(
+                        onOpenLibrary = { goTo(PAGE_LIBRARY) },
+                        onOpenScope = onOpenScope,
+                        onOpenDiagnostic = onOpenDiagnostic
+                    )
+                    1 -> LibraryScreen()
+                    else -> SettingsScreen(
+                        onOpenScope = onOpenScope,
+                        onOpenAiTts = onOpenAiTts,
+                        onOpenDiagnostic = onOpenDiagnostic
+                    )
+                }
+            }
+        }
+        GlassTabBar(
+            position = pager.currentPage + pager.currentPageOffsetFraction,
+            onSelect = goTo,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 16.dp)
+        )
+    }
+}
+
+/** 浮动玻璃底栏：三枚 92×52 胶囊，选中块跟着分页滑动连续移动，拖得快会被拉长。 */
+@Composable
+private fun GlassTabBar(position: Float, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
     val t = glass
     val shape = RoundedCornerShape(32.dp)
-    val index = TABS.indexOfFirst { it.route == current }.coerceAtLeast(0)
-    val edges = rememberLiquidEdges(index)
+    val index = position.roundToInt().coerceIn(0, TABS.lastIndex)
+    val span = rememberLiquidSpan(position)
     val slot = 92.dp
     val gap = 4.dp
     Box(
@@ -298,13 +319,12 @@ private fun GlassTabBar(current: String?, onSelect: (String) -> Unit, modifier: 
             .border(BorderStroke(1.dp, t.rim), shape)
             .padding(6.dp)
     ) {
-        // 水滴选中块：左右边缘分别跟随，移动中被拉长、纵向略收
         Box(
             Modifier
-                .offset(x = (slot + gap) * edges.start)
-                .width((slot + gap) * (edges.end - edges.start) - gap)
+                .offset(x = (slot + gap) * span.start)
+                .width((slot + gap) * (span.end - span.start) - gap)
                 .height(52.dp)
-                .graphicsLayer { scaleY = 1f - 0.12f * edges.stretch }
+                .graphicsLayer { scaleY = 1f - 0.12f * span.stretch }
                 .clip(RoundedCornerShape(26.dp))
                 .background(t.primarySoft)
         )
@@ -314,7 +334,7 @@ private fun GlassTabBar(current: String?, onSelect: (String) -> Unit, modifier: 
                 val color = if (on) t.primaryInk else t.ink2
                 Column(
                     modifier = Modifier
-                        .liquidClickable(pressed = 0.9f) { if (!on) onSelect(tab.route) }
+                        .liquidClickable(pressed = 0.9f) { if (!on) onSelect(i) }
                         .size(slot, 52.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center

@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -71,6 +72,33 @@ fun rememberLiquidEdges(index: Int): LiquidEdges {
         launch { right.animateTo(target + 1f, if (movingRight) LiquidSpec.lead else LiquidSpec.trail) }
     }
     return remember(left, right) { LiquidEdges(left, right) }
+}
+
+/** 连续位置版本的水滴指示块（跟随分页拖动），单位同 [LiquidEdges]。 */
+@Stable
+class LiquidSpan(val start: Float, val end: Float) {
+    val stretch: Float get() = ((end - start) - 1f).coerceIn(0f, 1f)
+}
+
+/**
+ * 跟随连续位置（如分页的 currentPage + offsetFraction）的水滴指示块：
+ * 领先边紧跟手指，拖尾边略慢一拍，拖得越快拉得越长，停下后回缩成原形。
+ */
+@Composable
+fun rememberLiquidSpan(position: Float): LiquidSpan {
+    val animate = liquidEnabled()
+    val prev = remember { floatArrayOf(position) }
+    val movingRight = position >= prev[0]
+    SideEffect { prev[0] = position }
+    val lead = spring<Float>(dampingRatio = 0.8f, stiffness = 1400f)
+    val trail = spring<Float>(dampingRatio = 0.85f, stiffness = 380f)
+    val start by animateFloatAsState(
+        position, if (!animate) snap() else if (movingRight) trail else lead, label = "spanStart"
+    )
+    val end by animateFloatAsState(
+        position + 1f, if (!animate) snap() else if (movingRight) lead else trail, label = "spanEnd"
+    )
+    return LiquidSpan(start, end)
 }
 
 /**

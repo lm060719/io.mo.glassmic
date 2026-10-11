@@ -58,6 +58,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -210,6 +211,12 @@ private fun OrbBackdrop(tint: List<Color>) {
 }
 
 /**
+ * 为 true 时页面不再自己画背景：左右滑动的标签页共用外层一张固定背景，
+ * 滑动时只有内容移动，背景（光斑 / 图片 / 壁纸）保持不动。
+ */
+val LocalSharedBackdrop = compositionLocalOf { false }
+
+/**
  * 标准页面骨架：玻璃背景 + 状态栏留白 + 顶部 toast。
  */
 @Composable
@@ -217,12 +224,14 @@ fun GlassPage(
     toast: SnackbarHostState? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
-    GlassBackground {
+    val body: @Composable BoxScope.() -> Unit = {
         CompositionLocalProvider(LocalContentColor provides glass.ink) {
             Box(Modifier.fillMaxSize().statusBarsPadding(), content = content)
         }
         if (toast != null) GlassToastHost(toast, Modifier.align(Alignment.TopCenter).statusBarsPadding())
     }
+    if (LocalSharedBackdrop.current) Box(Modifier.fillMaxSize(), content = body)
+    else GlassBackground(content = body)
 }
 
 /** 列表页通用内边距：左右 18，顶部 12，底部给浮动底栏留 120。 */
