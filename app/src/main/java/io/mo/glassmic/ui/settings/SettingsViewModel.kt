@@ -22,6 +22,7 @@ import io.mo.glassmic.root.AudioPolicyController
 import io.mo.glassmic.root.PolicyPhase
 import io.mo.glassmic.data.runtime.RuntimeStateHolder
 import io.mo.glassmic.audio.BandSettings
+import io.mo.glassmic.audio.OutputGain
 import io.mo.glassmic.proto.AppLanguage
 import io.mo.glassmic.proto.FloatingSize
 import io.mo.glassmic.proto.PlaybackPolicy
@@ -262,6 +263,10 @@ class SettingsViewModel @Inject constructor(
             val cur = it.audioMonitor
             it.setAudioMonitor(cur.toBuilder().setVolume(volume.coerceIn(0f, 1f)))
         }
+    }
+
+    fun setOutputGain(gain: Float) = viewModelScope.launch {
+        configStore.update { it.setOutputGain(OutputGain.normalize(gain)) }
     }
 
     // ============ 默认播放策略 ============

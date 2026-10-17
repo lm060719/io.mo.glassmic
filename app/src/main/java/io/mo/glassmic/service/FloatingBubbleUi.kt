@@ -36,6 +36,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBackIos
+import androidx.compose.material.icons.automirrored.rounded.VolumeOff
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -84,9 +86,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.mo.glassmic.R
+import io.mo.glassmic.audio.OutputGain
 import io.mo.glassmic.audio.tts.TtsProgress
 import io.mo.glassmic.proto.PlaybackPolicy
 import io.mo.glassmic.ui.common.Dot
+import io.mo.glassmic.ui.common.GlassSlider
 import io.mo.glassmic.ui.common.GlassTextField
 import io.mo.glassmic.ui.common.GlassToggle
 import io.mo.glassmic.ui.common.MonoFamily
@@ -127,6 +131,8 @@ fun FloatingBubbleRoot(
     isStreaming: Boolean = false,
     audioMonitorEnabled: Boolean = false,
     onToggleAudioMonitor: () -> Unit = {},
+    outputGain: Float = OutputGain.DEFAULT,
+    onSetOutputGain: (Float) -> Unit = {},
     playbackPolicy: PlaybackPolicy = PlaybackPolicy.SILENCE,
     onSetPlaybackPolicy: (PlaybackPolicy) -> Unit = {},
     positionMs: Long,
@@ -277,6 +283,7 @@ fun FloatingBubbleRoot(
                         onSelect = { if (it == PanelTab.TTS) onOpenTts() else onOpenMenu() },
                         height = 36.dp
                     )
+                    VolumeRow(gain = outputGain, onSetGain = onSetOutputGain)
                     if (tab == PanelTab.LIBRARY) {
                         LibraryTab(
                             fixedHeight = panelSize.height != null,
@@ -844,6 +851,60 @@ private fun PlaybackRow(
                 Text(formatMs(positionMs), fontSize = 12.sp, color = t.ink3, fontFamily = MonoFamily)
             }
         }
+    }
+}
+
+/**
+ * 注入音量：导入音频与 TTS 共用，0% - 300%。拖动时每跨过一个 5% 档就写一次配置，
+ * 边拖边能听到变化；点右侧百分比恢复 100%。
+ */
+@Composable
+private fun VolumeRow(gain: Float, onSetGain: (Float) -> Unit) {
+    val t = glass
+    // 拖动中以本地值为准，避免配置回读的旧值把滑块拽回去
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    var lastSent by remember { mutableStateOf(gain) }
+    val shown = dragging ?: gain
+    val percent = (OutputGain.normalize(shown) * 100).roundToInt()
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            if (percent == 0) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+            stringResource(R.string.float_volume),
+            tint = t.ink2,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(8.dp))
+        Box(Modifier.weight(1f)) {
+            GlassSlider(
+                value = shown,
+                onValueChange = { v ->
+                    dragging = v
+                    val n = OutputGain.normalize(v)
+                    if (n != lastSent) {
+                        lastSent = n
+                        onSetGain(n)
+                    }
+                },
+                valueRange = OutputGain.MIN..OutputGain.MAX,
+                onValueChangeFinished = { dragging = null }
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "$percent%",
+            fontSize = 12.sp,
+            fontFamily = MonoFamily,
+            color = if (percent == 100) t.ink3 else t.primaryInk,
+            textAlign = TextAlign.End,
+            modifier = Modifier
+                .width(44.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable {
+                    lastSent = OutputGain.DEFAULT
+                    onSetGain(OutputGain.DEFAULT)
+                }
+                .padding(vertical = 4.dp)
+        )
     }
 }
 

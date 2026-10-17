@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.mo.glassmic.BuildConfig
 import io.mo.glassmic.R
+import io.mo.glassmic.audio.OutputGain
 import io.mo.glassmic.data.config.audioPolicyTargets
 import io.mo.glassmic.proto.AppLanguage
 import io.mo.glassmic.proto.Appearance
@@ -323,6 +324,10 @@ fun SettingsScreen(
                         selected = if (cfg.playbackPolicy == PlaybackPolicy.UNRECOGNIZED) PlaybackPolicy.LOOP else cfg.playbackPolicy,
                         onSelect = vm::setPolicy
                     )
+                }
+                val gain = OutputGain.of(cfg)
+                StackedRow(stringResource(R.string.settings_output_gain), value = "%.0f%%".format(gain * 100)) {
+                    GlassSlider(value = gain, onValueChange = vm::setOutputGain, valueRange = OutputGain.MIN..OutputGain.MAX)
                 }
                 ToggleRow(
                     title = stringResource(R.string.settings_audio_monitor_enabled),

@@ -24,6 +24,7 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import io.mo.glassmic.R
+import io.mo.glassmic.audio.OutputGain
 import io.mo.glassmic.core.Constants
 import io.mo.glassmic.core.model.SourceType
 import io.mo.glassmic.data.audio.FloatingIconStore
@@ -272,6 +273,8 @@ class FloatingWindowService : LifecycleService() {
                     isStreaming = rt.isStreaming,
                     audioMonitorEnabled = cfg.audioMonitor.enabled,
                     onToggleAudioMonitor = ::toggleAudioMonitor,
+                    outputGain = OutputGain.of(cfg),
+                    onSetOutputGain = ::setOutputGain,
                     positionMs = rt.positionMs,
                     durationMs = rt.durationMs,
                     currentName = currentName,
@@ -389,6 +392,12 @@ class FloatingWindowService : LifecycleService() {
             configStore.update {
                 it.setTts(it.tts.toBuilder().setAi(it.tts.ai.toBuilder().also(transform)).build())
             }
+        }
+    }
+
+    private fun setOutputGain(gain: Float) {
+        lifecycleScope.launch {
+            configStore.update { it.setOutputGain(OutputGain.normalize(gain)) }
         }
     }
 

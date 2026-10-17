@@ -53,6 +53,10 @@ message AppConfig {
   repeated string audio_policy_packages = 22;
   // Target every eligible third-party app that requests RECORD_AUDIO; ignores audio_policy_packages.
   bool audio_policy_all_apps = 23;
+
+  // 注入音量倍率（导入音频与 TTS 共用）：0.0 - 3.0，未设置视为 1.0。
+  // 用 optional 区分「未设置」与「调到 0 静音」。
+  optional float output_gain = 24;
 }
 
 enum InjectionBackend {

@@ -391,6 +391,8 @@
     <string name="settings_audio_monitor_enabled">开启实时耳返</string>
     <string name="settings_audio_monitor_enabled_hint">在虚拟麦克风推流时，同步通过耳机/扬声器播放当前替换的音源内容</string>
     <string name="settings_audio_monitor_volume">耳返监听音量</string>
+    <string name="settings_output_gain">注入音量</string>
+    <string name="float_volume">注入音量</string>
 
     <string name="settings_band_title">音频频段</string>
     <string name="settings_band_enabled">启用频段滤波</string>

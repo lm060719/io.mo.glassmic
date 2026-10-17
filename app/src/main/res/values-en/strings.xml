@@ -391,6 +391,8 @@
     <string name="settings_audio_monitor_enabled">Enable Live Audio Monitor</string>
     <string name="settings_audio_monitor_enabled_hint">Simultaneously plays replaced audio through headphones/speakers while virtual mic is streaming</string>
     <string name="settings_audio_monitor_volume">Monitor Volume</string>
+    <string name="settings_output_gain">Injected volume</string>
+    <string name="float_volume">Injected volume</string>
 
     <string name="settings_band_title">Audio frequency range</string>
     <string name="settings_band_enabled">Enable frequency filter</string>

@@ -69,6 +69,7 @@ class SharedPcmPublisher @Inject constructor(
     )
 
     private data class AudioEffects(
+        val gain: Float = OutputGain.DEFAULT,
         val noiseSim: Boolean = false,
         val highGain: Boolean = false,
         val limiterEnabled: Boolean = true,
@@ -152,6 +153,7 @@ class SharedPcmPublisher @Inject constructor(
                 val exp = cfg.experimental
                 val speedRaw = if (exp.speedFactor <= 0f) 1f else exp.speedFactor.coerceIn(0.5f, 2f)
                 effects = AudioEffects(
+                    gain = OutputGain.of(cfg),
                     noiseSim = exp.unlocked && exp.noiseSim,
                     highGain = exp.unlocked && exp.highGain,
                     limiterEnabled = exp.limiterEnabled,
@@ -518,6 +520,9 @@ class SharedPcmPublisher @Inject constructor(
         while (i + 1 < data.size) {
             var mixed = ((data[i + 1].toInt() shl 8) or (data[i].toInt() and 0xFF)).toShort().toFloat()
             inputSquares += mixed.toDouble() * mixed
+            if (fx.gain != 1f) {
+                mixed *= fx.gain
+            }
             if (fx.highGain) {
                 mixed *= HIGH_GAIN_MULTIPLIER
             }
