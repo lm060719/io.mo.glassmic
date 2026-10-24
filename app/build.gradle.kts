@@ -15,8 +15,8 @@ android {
         applicationId = "io.mo.glassmic"
         minSdk = 29
         targetSdk = 35
-        versionCode = 25
-        versionName = "1.4.6"
+        versionCode = 26
+        versionName = "1.4.7"
         resourceConfigurations += listOf("zh-rCN", "en")
     }
 
