@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
@@ -239,11 +240,15 @@ fun FloatingBubbleRoot(
 
             FloatMode.MINI_BAR, FloatMode.MENU, FloatMode.TTS -> {
                 val tab = if (mode == FloatMode.TTS) PanelTab.TTS else PanelTab.LIBRARY
+                val availableHeight = minOf(panelSize.height ?: panelMaxHeight, panelMaxHeight - PANEL_SHADOW_MARGIN * 2)
+                val compactLibrary = tab == PanelTab.LIBRARY &&
+                    availableHeight < LIBRARY_COMPACT_HEIGHT * LocalDensity.current.fontScale
                 PanelShell(
                     maxWidth = panelMaxWidth,
                     maxHeight = if (tab == PanelTab.TTS) Dp.Infinity else panelMaxHeight,
                     panel = panelSize,
                     scrollable = tab == PanelTab.TTS,
+                    dense = compactLibrary,
                     onResizeEnd = saveSize,
                     onResetSize = resetSize,
                     onDragBy = onDragBy,
@@ -283,9 +288,12 @@ fun FloatingBubbleRoot(
                         onSelect = { if (it == PanelTab.TTS) onOpenTts() else onOpenMenu() },
                         height = 36.dp
                     )
-                    VolumeRow(gain = outputGain, onSetGain = onSetOutputGain)
+                    if (!compactLibrary) VolumeRow(gain = outputGain, onSetGain = onSetOutputGain)
                     if (tab == PanelTab.LIBRARY) {
                         LibraryTab(
+                            compactLayout = compactLibrary,
+                            outputGain = outputGain,
+                            onSetOutputGain = onSetOutputGain,
                             fixedHeight = panelSize.height != null,
                             activeFile = activeFile,
                             paused = paused,
@@ -406,6 +414,16 @@ private val FULL_MIN_HEIGHT = 300.dp
 private val MINI_MAX_WIDTH = 150.dp
 private val MINI_MAX_HEIGHT = 120.dp
 
+// 矮屏优先保留选曲列表；只收紧留白，不缩小歌曲和控制按钮的触摸区域。
+private val LIBRARY_COMPACT_HEIGHT = 480.dp
+private val PANEL_SHADOW_MARGIN = 10.dp
+private val COMPACT_PANEL_PADDING = 12.dp
+private val COMPACT_PANEL_GAP = 8.dp
+private val LIBRARY_TOUCH_HEIGHT = 48.dp
+private val LIBRARY_ITEM_GAP = 2.dp
+private val LIBRARY_ITEM_RADIUS = 14.dp
+private val LIBRARY_ITEM_PADDING = 12.dp
+
 /** 面板随尺寸自动切换的显示档位。 */
 private enum class PanelLevel { FULL, COMPACT, MINI }
 
@@ -423,6 +441,7 @@ private fun PanelShell(
     maxHeight: Dp,
     panel: PanelSize,
     scrollable: Boolean,
+    dense: Boolean = false,
     onResizeEnd: () -> Unit,
     onResetSize: () -> Unit,
     onDragBy: (Float, Float) -> Unit,
@@ -436,15 +455,16 @@ private fun PanelShell(
 ) {
     val t = glass
     val density = LocalDensity.current
-    val maxW = (maxWidth - 20.dp).coerceAtLeast(PANEL_MIN_WIDTH)
-    val maxH = if (maxHeight == Dp.Infinity) null else (maxHeight - 20.dp).coerceAtLeast(PANEL_MIN_HEIGHT)
+    val maxW = (maxWidth - PANEL_SHADOW_MARGIN * 2).coerceAtLeast(PANEL_MIN_WIDTH)
+    val maxH = if (maxHeight == Dp.Infinity) null else (maxHeight - PANEL_SHADOW_MARGIN * 2).coerceAtLeast(PANEL_MIN_HEIGHT)
     val width = (panel.width ?: EXPANDED_PANEL_WIDTH).coerceIn(PANEL_MIN_WIDTH, maxW)
     val fixedHeight = panel.height?.let { h -> if (maxH != null) h.coerceIn(PANEL_MIN_HEIGHT, maxH) else h.coerceAtLeast(PANEL_MIN_HEIGHT) }
+        ?: if (dense && width >= FULL_MIN_WIDTH) maxH else null
     var measuredHeight by remember { mutableStateOf(0.dp) }
-    // 高度未自定义时按宽度判断档位（高度随内容）
+    // 档位依据用户主动设置的高度。旋转导致的屏幕限高不能把选曲入口隐藏。
     val level = when {
-        width < MINI_MAX_WIDTH || (fixedHeight != null && fixedHeight < MINI_MAX_HEIGHT) -> PanelLevel.MINI
-        width < FULL_MIN_WIDTH || (fixedHeight != null && fixedHeight < FULL_MIN_HEIGHT) -> PanelLevel.COMPACT
+        width < MINI_MAX_WIDTH || (panel.height?.let { it < MINI_MAX_HEIGHT } == true) -> PanelLevel.MINI
+        width < FULL_MIN_WIDTH || (panel.height?.let { it < FULL_MIN_HEIGHT } == true) -> PanelLevel.COMPACT
         else -> PanelLevel.FULL
     }
 
@@ -481,7 +501,7 @@ private fun PanelShell(
     }
 
     // 投影画在外层边距里：窗口是 WRAP_CONTENT，投影外溢会被裁掉
-    Box(Modifier.padding(10.dp)) {
+    Box(Modifier.padding(PANEL_SHADOW_MARGIN)) {
         if (level == PanelLevel.MINI) {
             // 最小档：整块是播放键——轻点播放/继续，拖动移动位置，长按收起成悬浮球
             val boxHeight = fixedHeight ?: width
@@ -520,8 +540,8 @@ private fun PanelShell(
                     .clip(shape)
                     .background(t.sheet)
                     .border(BorderStroke(1.dp, t.rim), shape)
-                    .padding(if (level == PanelLevel.FULL) 16.dp else 12.dp),
-                verticalArrangement = Arrangement.spacedBy(if (level == PanelLevel.FULL) 14.dp else 10.dp)
+                    .padding(if (dense) COMPACT_PANEL_PADDING else if (level == PanelLevel.FULL) 16.dp else 12.dp),
+                verticalArrangement = Arrangement.spacedBy(if (dense) COMPACT_PANEL_GAP else if (level == PanelLevel.FULL) 14.dp else 10.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().dragHandle(onDragBy, onDragEnd),
@@ -536,7 +556,7 @@ private fun PanelShell(
                             if (fixedHeight != null && (scrollable || level == PanelLevel.COMPACT))
                                 Modifier.verticalScroll(rememberScrollState()) else Modifier
                         ),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (dense) COMPACT_PANEL_GAP else 14.dp),
                     content = if (level == PanelLevel.FULL) content else compact
                 )
             }
@@ -699,6 +719,9 @@ private fun Ball(
 @Composable
 private fun ColumnScope.LibraryTab(
     fixedHeight: Boolean,
+    compactLayout: Boolean,
+    outputGain: Float,
+    onSetOutputGain: (Float) -> Unit,
     activeFile: Boolean,
     paused: Boolean,
     currentName: String?,
@@ -715,93 +738,117 @@ private fun ColumnScope.LibraryTab(
     onSetPlaybackPolicy: (PlaybackPolicy) -> Unit,
 ) {
     val t = glass
-    PlaybackRow(
-        enabled = activeFile,
-        paused = paused,
-        currentName = currentName,
-        positionMs = positionMs,
-        durationMs = durationMs,
-        onTogglePause = onTogglePause,
-        onSeek = onSeek
-    )
-
-    // ---- 分组切换（多于一个分组时显示） ----
-    if (groups.size > 1) {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(groups, key = { it.id }) { g ->
-                val on = g.id == browsingGroupId
-                Text(
-                    "${g.emoji} ${g.name}",
-                    fontSize = 12.sp,
-                    fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (on) t.primaryInk else t.ink2,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(if (on) t.primarySoft else t.fill)
-                        .clickable { onBrowseGroup(g.id) }
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
-                )
+    var controlsExpanded by remember { mutableStateOf(false) }
+    val playback: @Composable () -> Unit = {
+        PlaybackRow(
+            enabled = activeFile,
+            paused = paused,
+            currentName = currentName,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            onTogglePause = onTogglePause,
+            onSeek = onSeek
+        )
+    }
+    val groupSelector: @Composable () -> Unit = {
+        if (groups.size > 1) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(groups, key = { it.id }) { g ->
+                    val on = g.id == browsingGroupId
+                    Text(
+                        "${g.emoji} ${g.name}",
+                        fontSize = 12.sp,
+                        fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (on) t.ink else t.ink2,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (on) t.primarySoft else t.fill)
+                            .clickable { onBrowseGroup(g.id) }
+                            .heightIn(min = LIBRARY_TOUCH_HEIGHT)
+                            .padding(horizontal = LIBRARY_ITEM_PADDING, vertical = LIBRARY_ITEM_PADDING)
+                    )
+                }
             }
         }
     }
+    val policySelector: @Composable () -> Unit = {
+        Segmented(
+            options = listOf(
+                PlaybackPolicy.SILENCE to stringResource(R.string.float_policy_once),
+                PlaybackPolicy.LOOP to stringResource(R.string.float_policy_loop),
+                PlaybackPolicy.REAL_MIC to stringResource(R.string.float_policy_real)
+            ),
+            selected = if (playbackPolicy == PlaybackPolicy.UNRECOGNIZED) PlaybackPolicy.SILENCE else playbackPolicy,
+            onSelect = onSetPlaybackPolicy,
+            height = 32.dp,
+            fontSize = 12.sp
+        )
+    }
+    val clipsFlow = remember(browsingGroupId) {
+        browsingGroupId?.let(clipsProvider) ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }
+    val clips by clipsFlow.collectAsState(initial = emptyList())
+    val emptyMessage = stringResource(
+        if (browsingGroupId == null) R.string.float_no_groups else R.string.float_no_clips_in_group
+    )
 
-    // ---- 片段列表 ----
-    if (browsingGroupId == null) {
-        PanelEmpty(stringResource(R.string.float_no_groups))
-    } else {
-        val clipsFlow = remember(browsingGroupId) { clipsProvider(browsingGroupId) }
-        val clips by clipsFlow.collectAsState(initial = emptyList())
+    if (!compactLayout) {
+        playback()
+        groupSelector()
+    }
+    LazyColumn(
+        modifier = Modifier.weight(1f, fill = compactLayout || fixedHeight)
+            .then(if (compactLayout || fixedHeight) Modifier else Modifier.heightIn(max = 264.dp)),
+        verticalArrangement = Arrangement.spacedBy(LIBRARY_ITEM_GAP)
+    ) {
+        if (compactLayout) {
+            // 控制区和分组也参与滚动：极矮屏、大字体或展开设置都不能挤掉歌曲。
+            item(key = "controls") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { playback() }
+                    TextButton(onClick = { controlsExpanded = !controlsExpanded }) {
+                        Text(stringResource(if (controlsExpanded) R.string.float_hide_controls else R.string.float_show_controls))
+                    }
+                }
+            }
+            if (controlsExpanded) {
+                item(key = "volume") { VolumeRow(gain = outputGain, onSetGain = onSetOutputGain) }
+                item(key = "policy") { policySelector() }
+            }
+            if (groups.size > 1) item(key = "groups") { groupSelector() }
+        }
         if (clips.isEmpty()) {
-            PanelEmpty(stringResource(R.string.float_no_clips_in_group))
+            item(key = "empty") { PanelEmpty(emptyMessage) }
         } else {
-            LazyColumn(
-                // 用户调过高度时列表填满剩余空间；否则限高，面板随内容自适应
-                modifier = Modifier.weight(1f, fill = false)
-                    .then(if (fixedHeight) Modifier else Modifier.heightIn(max = 264.dp)),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                items(clips, key = { it.id }) { c ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (c.isCurrent) t.primarySoft else Color.Transparent)
-                            .clickable { onSelectClip(c.id) }
-                            .padding(horizontal = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            c.name,
-                            fontSize = 14.sp,
-                            fontWeight = if (c.isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (c.isCurrent) t.primaryInk else t.ink,
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        if (c.durationMs > 0) {
-                            Spacer(Modifier.width(8.dp))
-                            Text(formatMs(c.durationMs), fontSize = 12.sp, color = t.ink3, fontFamily = MonoFamily)
-                        }
+            items(clips, key = { "clip:${it.id}" }) { c ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = LIBRARY_TOUCH_HEIGHT)
+                        .clip(RoundedCornerShape(LIBRARY_ITEM_RADIUS))
+                        .background(if (c.isCurrent) t.primarySoft else Color.Transparent)
+                        .clickable { onSelectClip(c.id) }
+                        .padding(horizontal = LIBRARY_ITEM_PADDING, vertical = COMPACT_PANEL_GAP),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        c.name,
+                        fontSize = 14.sp,
+                        fontWeight = if (c.isCurrent) FontWeight.SemiBold else FontWeight.Normal,
+                        color = t.ink,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (c.durationMs > 0) {
+                        Spacer(Modifier.width(COMPACT_PANEL_GAP))
+                        Text(formatMs(c.durationMs), fontSize = 12.sp, color = t.ink3, fontFamily = MonoFamily)
                     }
                 }
             }
         }
     }
-
-    // ---- 播放策略 ----
-    Segmented(
-        options = listOf(
-            PlaybackPolicy.SILENCE to stringResource(R.string.float_policy_once),
-            PlaybackPolicy.LOOP to stringResource(R.string.float_policy_loop),
-            PlaybackPolicy.REAL_MIC to stringResource(R.string.float_policy_real)
-        ),
-        selected = if (playbackPolicy == PlaybackPolicy.UNRECOGNIZED) PlaybackPolicy.SILENCE else playbackPolicy,
-        onSelect = onSetPlaybackPolicy,
-        height = 32.dp,
-        fontSize = 12.sp
-    )
+    if (!compactLayout) policySelector()
 }
 
 /** 播放头：播放/暂停 + 名称 + 进度 + 时间。音频库页与精简档面板共用；窄时隐藏时间。 */

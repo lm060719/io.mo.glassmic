@@ -527,4 +527,6 @@
     <string name="ai_tts_fish_fetching">Loading…</string>
     <string name="ai_tts_fish_no_voices">No voices found</string>
     <string name="float_tts_clear">Clear</string>
+    <string name="float_show_controls">Controls</string>
+    <string name="float_hide_controls">Hide</string>
 </resources>

@@ -527,4 +527,6 @@
     <string name="ai_tts_fish_fetching">加载中…</string>
     <string name="ai_tts_fish_no_voices">没有找到声音</string>
     <string name="float_tts_clear">清空</string>
+    <string name="float_show_controls">播放设置</string>
+    <string name="float_hide_controls">收起设置</string>
 </resources>
