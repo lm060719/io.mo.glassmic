@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.mo.glassmic.R
+import io.mo.glassmic.root.appLabelOf
 import io.mo.glassmic.data.config.audioPolicyTargets
 import io.mo.glassmic.core.model.SourceType
 import io.mo.glassmic.data.audio.PlaybackController
@@ -68,6 +69,7 @@ class HomeViewModel @Inject constructor(
     private val safeModeRepo: SafeModeRepository,
     private val playback: PlaybackController,
     audioPolicy: io.mo.glassmic.root.AudioPolicyController,
+    private val liveCapture: io.mo.glassmic.root.LiveCaptureController,
     audioDao: AudioDao,
     hookStatusRepo: HookStatusRepository,
     audioStatsRepo: AudioStatsRepository
@@ -99,6 +101,8 @@ class HomeViewModel @Inject constructor(
                 SourceType.REAL_MIC -> AppLocale.string(context, R.string.source_real_mic)
                 SourceType.SILENCE -> AppLocale.string(context, R.string.source_silence)
                 SourceType.TTS -> AppLocale.string(context, R.string.source_tts)
+                SourceType.LIVE -> AppLocale.string(context, R.string.source_live,
+                    context.appLabelOf(liveCapture.status.value.packageName))
             },
             groupName = group?.let { "${it.emoji} ${it.name}" } ?: "—",
             sourceEmoji = when (rt.currentSourceType) {
@@ -106,6 +110,7 @@ class HomeViewModel @Inject constructor(
                 SourceType.TTS -> "🗣"
                 SourceType.SILENCE -> "🔇"
                 SourceType.REAL_MIC -> "🎙️"
+                SourceType.LIVE -> "📡"
             },
             groupPlainName = when (rt.currentSourceType) {
                 SourceType.FILE -> group?.name.orEmpty()

@@ -79,7 +79,7 @@ class EffectiveSourceResolver @Inject constructor(
         }
         // 8. 当前运行态决定的音源
         val eff = when (rt.currentSourceType) {
-            SourceType.TTS -> SourceType.FILE
+            SourceType.TTS, SourceType.LIVE -> SourceType.FILE
             else -> rt.currentSourceType
         }
         return Triple(eff, "INTERCEPT_OK", "已选择音源 (${eff.name})，实际替换请查看拦截统计")

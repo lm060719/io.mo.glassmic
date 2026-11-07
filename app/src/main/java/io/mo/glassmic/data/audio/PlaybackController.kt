@@ -25,10 +25,14 @@ import io.mo.glassmic.log.GlassLog
 import io.mo.glassmic.memory.MemoryPressure
 import io.mo.glassmic.memory.MemoryPressureBus
 import io.mo.glassmic.memory.MemoryReleasable
+import io.mo.glassmic.root.LiveCaptureController
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -60,12 +64,26 @@ class PlaybackController @Inject constructor(
     private val dao: AudioDao,
     private val ttsFactory: TtsSynthesizerFactory,
     private val ttsProgress: TtsProgress,
+    private val liveCapture: LiveCaptureController,
     @ApplicationContext private val context: Context
 ) : MemoryReleasable {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         // 本类持有整个进程里最大的一块可丢弃内存（TTS 生成的 PCM），登记到内存压力总线
         MemoryPressureBus.register(this)
+        // 服务停止（用户关闭总开关 / 安全模式）时结束实时抓取：root 进程和 AudioPolicy 不能在服务之外常驻
+        scope.launch {
+            runtime.flow.map { it.enabled }.distinctUntilChanged().collect { enabled ->
+                if (enabled) return@collect
+                if (runtime.value.currentSourceType == SourceType.LIVE) {
+                    GlassLog.b("Playback") { "服务已停止，结束实时应用音频" }
+                    setRealMic()
+                }
+                liveCapture.close()
+            }
+        }
     }
 
     /** 设置某个片段为当前虚拟麦克风音源。文件不存在则自动清掉数据库记录并返回 false。 */
@@ -304,6 +322,34 @@ class PlaybackController @Inject constructor(
         const val MASTER_CHANNELS = 1
         const val COUNTDOWN_TICK_MS = 100L
         const val TTS_GENERATE_TIMEOUT_MS = 90_000L
+    }
+
+    // ============ 实时 App 音频（issue #42，实验） ============
+
+    /**
+     * 把 [packageName] 正在播放的声音实时当作虚拟麦克风音源（root 抓取）。
+     * 失败返回错误信息，成功返回 null。原 App 仍在本机正常出声。
+     */
+    suspend fun setLiveSource(packageName: String): String? = withContext(Dispatchers.IO) {
+        if (!runtime.value.enabled) return@withContext AppLocale.string(context, R.string.live_need_service)
+        stopPreviewTts()
+        val src = try {
+            liveCapture.open(packageName)
+        } catch (error: Exception) {
+            return@withContext error.message ?: error.javaClass.simpleName
+        }
+        // root 授权可能耗时数秒，期间服务若已停止，不再接上这个会话
+        if (!runtime.value.enabled) {
+            liveCapture.close()
+            return@withContext AppLocale.string(context, R.string.live_need_service)
+        }
+        publisher.setSource(src)
+        publisher.setPaused(false)
+        configStore.update {
+            it.setCurrentGroupId("")
+            it.setCurrentAudioId("")
+        }
+        null
     }
 
     /** 切回真实麦克风：释放当前 file source，运行态置 REAL_MIC，清空持久化选中。 */

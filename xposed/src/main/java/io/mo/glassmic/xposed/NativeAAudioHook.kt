@@ -128,7 +128,7 @@ object NativeAAudioHook {
                     val src = XBridge.resolveSource(ctx, callerPackage, captureObserved = captureReads > 0L)
                     val decisionCode = when (src) {
                         SourceType.REAL_MIC -> 0
-                        SourceType.FILE, SourceType.TTS -> 1
+                        SourceType.FILE, SourceType.TTS, SourceType.LIVE -> 1
                         SourceType.SILENCE -> 2
                     }
                     nativeSetDecision(decisionCode)
@@ -213,7 +213,7 @@ object NativeAAudioHook {
                     // 4.3 只有目标进程最近确实发生过 native 录音回调，才创建 PCM Provider consumer。
                     // 旧逻辑仅凭 FILE 决策就打开 fd，会让王者等多进程应用产生长期空闲 consumer，
                     // Publisher 持续向没人读取的 pipe 写入并大量丢弃队列数据。
-                    val needsPcm = src == SourceType.FILE || src == SourceType.TTS
+                    val needsPcm = src == SourceType.FILE || src == SourceType.TTS || src == SourceType.LIVE
                     when {
                         needsPcm && captureAgeMs <= PCM_OPEN_ACTIVITY_WINDOW_MS -> ensurePcmFd(ctx, callerPackage)
                         hasPushedFd && (!needsPcm || captureAgeMs > PCM_CLOSE_IDLE_MS) -> {

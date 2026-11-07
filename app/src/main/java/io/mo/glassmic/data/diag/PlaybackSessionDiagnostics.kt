@@ -273,7 +273,8 @@ class PlaybackSessionDiagnostics @Inject constructor(
     private fun isPlaying(state: RuntimeState): Boolean =
         state.enabled &&
             !state.paused &&
-            (state.currentSourceType == SourceType.FILE || state.currentSourceType == SourceType.TTS)
+            (state.currentSourceType == SourceType.FILE || state.currentSourceType == SourceType.TTS ||
+                state.currentSourceType == SourceType.LIVE)
 
     private fun delta(current: Long, baseline: Long): Long =
         (current - baseline).coerceAtLeast(0L)

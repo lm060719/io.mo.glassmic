@@ -421,12 +421,15 @@ class SharedPcmPublisher @Inject constructor(
     private fun broadcast(buf: ByteBuffer, readEffectsEpoch: Long, readStreamEpoch: Long): Int {
         val data = ByteArray(buf.remaining())
         buf.get(data)
-        val sourceData = if (!paused && (currentSource.type == SourceType.FILE || currentSource.type == SourceType.TTS)) {
-            applyEffects(data, readEffectsEpoch)
+        val type = currentSource.type
+        val sourceData = if (!paused && (type == SourceType.FILE || type == SourceType.TTS || type == SourceType.LIVE)) {
+            // 实时源不能变速：会让抓取缓冲持续积压/欠载
+            applyEffects(data, readEffectsEpoch, allowSpeed = type != SourceType.LIVE)
         } else {
             data
         }
-        if (!paused && (currentSource.type == SourceType.FILE || currentSource.type == SourceType.TTS)) {
+        // 实时源不走本机监听：开启 RENDER 时原 App 本来就在本机出声，再播一遍会叠音
+        if (!paused && (type == SourceType.FILE || type == SourceType.TTS)) {
             monitorPlayer.write(sourceData)
         } else {
             monitorPlayer.pauseAndFlush()
@@ -499,7 +502,7 @@ class SharedPcmPublisher @Inject constructor(
         return out
     }
 
-    private fun applyEffects(input: ByteArray, epoch: Long): ByteArray {
+    private fun applyEffects(input: ByteArray, epoch: Long, allowSpeed: Boolean = true): ByteArray {
         val fx = effects
         // Use the generation captured before reading: a concurrent seek/source switch must
         // reset again for the next source, even if its generation changed during this read.
@@ -510,7 +513,7 @@ class SharedPcmPublisher @Inject constructor(
         if (!fx.reverb || reset) reverbLine.reset()
 
         // 变速（变速变调）：线性重采样，改变样本数量
-        val data = if (fx.speed) resample(input, fx.speedFactor) else input
+        val data = if (fx.speed && allowSpeed) resample(input, fx.speedFactor) else input
 
         var inputSquares = 0.0
         var outputSquares = 0.0

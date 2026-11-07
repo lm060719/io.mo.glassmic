@@ -2,6 +2,7 @@
 
 # app_process loads this entry point by name from the installed APK, including release builds.
 -keep class io.mo.glassmic.root.AudioPolicyMain { *; }
+-keep class io.mo.glassmic.root.PlaybackCaptureMain { *; }
 
 # 保留 libxposed API 101 入口
 -keep class io.mo.glassmic.xposed.** { *; }

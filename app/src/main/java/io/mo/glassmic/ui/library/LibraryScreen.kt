@@ -137,6 +137,10 @@ fun LibraryScreen(vm: LibraryViewModel = hiltViewModel()) {
             }
 
             item {
+                LiveSourceCard(onNotice = { toast.showSnackbar(it) })
+            }
+
+            item {
                 GroupChipsRow(
                     groups = state.groups,
                     selectedId = state.selectedGroupId,

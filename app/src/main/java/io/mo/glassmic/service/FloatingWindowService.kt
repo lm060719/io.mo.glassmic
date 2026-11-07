@@ -24,6 +24,7 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import io.mo.glassmic.R
+import io.mo.glassmic.root.appLabelOf
 import io.mo.glassmic.audio.OutputGain
 import io.mo.glassmic.core.Constants
 import io.mo.glassmic.core.model.SourceType
@@ -68,6 +69,7 @@ class FloatingWindowService : LifecycleService() {
     @Inject lateinit var iconStore: FloatingIconStore
     @Inject lateinit var volumeShortcut: VolumeShortcutRepository
     @Inject lateinit var ttsProgress: TtsProgress
+    @Inject lateinit var liveCapture: io.mo.glassmic.root.LiveCaptureController
 
     private var windowManager: WindowManager? = null
     private var host: FloatingOverlayHost? = null
@@ -191,7 +193,7 @@ class FloatingWindowService : LifecycleService() {
     private fun onShortcutPlay() {
         lifecycleScope.launch {
             val src = runtime.flow.value.currentSourceType
-            if (src != SourceType.FILE && src != SourceType.TTS) {
+            if (src != SourceType.FILE && src != SourceType.TTS && src != SourceType.LIVE) {
                 playback.restorePersistedClip()
             }
             playback.resume()
@@ -255,9 +257,13 @@ class FloatingWindowService : LifecycleService() {
                 val ttsProgressLines by ttsProgress.lines.collectAsState()
                 val ttsEnhanced by ttsProgress.enhanced.collectAsState()
 
-                val activeFile = (rt.currentSourceType == SourceType.FILE || rt.currentSourceType == SourceType.TTS) && rt.enabled && !rt.safeMode
+                val activeFile = (rt.currentSourceType == SourceType.FILE || rt.currentSourceType == SourceType.TTS ||
+                    rt.currentSourceType == SourceType.LIVE) && rt.enabled && !rt.safeMode
+                val liveStatus by liveCapture.status.collectAsState()
                 val currentId = cfg.currentAudioId
                 val currentName = if (rt.currentSourceType == SourceType.TTS) stringResource(R.string.source_tts)
+                                  else if (rt.currentSourceType == SourceType.LIVE)
+                                      stringResource(R.string.source_live, appLabelOf(liveStatus.packageName))
                                   else allClips.firstOrNull { it.id == currentId }?.displayName
 
                 FloatingBubbleRoot(

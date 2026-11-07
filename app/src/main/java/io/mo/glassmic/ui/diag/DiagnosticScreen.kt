@@ -544,7 +544,7 @@ private fun pcmLevels(pcm: ByteArray, bars: Int): List<Float> {
 private fun DecisionItemRow(record: DecisionRecord) {
     val t = glass
     val tagColor = when (record.result) {
-        SourceType.FILE, SourceType.TTS -> t.ok
+        SourceType.FILE, SourceType.TTS, SourceType.LIVE -> t.ok
         SourceType.SILENCE -> t.primaryInk
         SourceType.REAL_MIC -> t.ink3
     }
