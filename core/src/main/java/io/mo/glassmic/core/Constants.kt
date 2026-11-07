@@ -65,6 +65,9 @@ object Constants {
     // system_server 只对这些 GlassMic 目标应用解除本模块的包可见性过滤。
     // 该集合与 App 内白名单同步；未命中的调用方保持系统/HMA 原始过滤结果。
     const val KEY_VISIBILITY_ALLOWLIST = "visibility_allowlist"
+    // 同一份白名单的 root 文件副本（system:system 0600，每行一个包名）。LSPosed remote preferences
+    // 在 system_server 里只在开机时加载一次、之后收不到更新；这个文件按修改时间重读，改范围后立即生效。
+    const val VISIBILITY_ALLOWLIST_FILE = "/data/system/glassmic_visibility_allowlist"
     // 调试/高级用户用的 system property 覆盖（重启失效，仅便于排查）
     const val PROP_VISIBILITY_COMPAT = "persist.sys.glassmic_vis"
 

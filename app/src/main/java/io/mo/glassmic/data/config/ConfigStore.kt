@@ -108,6 +108,8 @@ class ConfigStore @Inject constructor(
         }
         // 本地文件对 system_server 不可见，必须再经 XposedService 写进 LSPosed remote preferences。
         lsposedServiceManager.syncRemotePrefs()
+        // remote preferences 在 system_server 里只在开机时加载；再用 root 写一份文件，改范围立即生效。
+        io.mo.glassmic.data.runtime.VisibilityAllowlistFile.sync(allowed)
     }
 }
 

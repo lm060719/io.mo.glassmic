@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.util.Log
 import io.github.libxposed.api.XposedInterface
 import io.mo.glassmic.core.Constants
+import java.io.File
 import java.lang.reflect.Method
 
 /**
@@ -37,6 +38,9 @@ object SystemVisibilityHook {
     @Volatile private var prefs: SharedPreferences? = null
     @Volatile private var cachedAllowlist: Set<String> = emptySet()
     @Volatile private var cachedAt = 0L
+    // root 写入的白名单文件：按 (修改时间, 长度) 判断是否需要重读，仅在 prefsLock 内访问
+    private var fileStamp: Pair<Long, Long>? = null
+    private var fileAllowlist: Set<String>? = null
     private val prefsLock = Any()
     private var logger: XposedInterface? = null
     private var lastPrefsDiagnostic: String? = null
@@ -160,6 +164,17 @@ object SystemVisibilityHook {
             val secondNow = SystemClock.uptimeMillis()
             if (secondNow - cachedAt < PREFS_REFRESH_MS) return cachedAllowlist
 
+            // 优先用 root 写入的文件：LSPosed remote preferences 在 system_server 只在开机时加载一次，
+            // 之后用户修改生效范围收不到更新（实测要重启才生效）。文件不存在时再退回 remote preferences。
+            readAllowlistFile()?.let { fromFile ->
+                if (fromFile != cachedAllowlist || lastPrefsDiagnostic == null) {
+                    reportPrefsDiagnostic("visibility allowlist refreshed from file count=${fromFile.size}", Log.INFO)
+                }
+                cachedAllowlist = fromFile
+                cachedAt = secondNow
+                return cachedAllowlist
+            }
+
             val sp = runCatching { prefsProvider?.invoke() }.onFailure {
                 reportPrefsDiagnostic("remote preferences read failed: ${it.javaClass.simpleName}", Log.WARN)
             }.getOrNull() ?: prefs
@@ -187,6 +202,31 @@ object SystemVisibilityHook {
             cachedAt = secondNow
             return cachedAllowlist
         }
+    }
+
+    /**
+     * 读取 [Constants.VISIBILITY_ALLOWLIST_FILE]。文件不存在返回 null（交给 remote preferences）；
+     * 存在则以它为准，空文件即空白名单。只在修改时间或长度变化时重读。在 prefsLock 内调用。
+     */
+    private fun readAllowlistFile(): Set<String>? {
+        val file = File(Constants.VISIBILITY_ALLOWLIST_FILE)
+        val stamp = runCatching { if (file.isFile) file.lastModified() to file.length() else null }.getOrNull()
+        if (stamp == null) {
+            fileStamp = null
+            fileAllowlist = null
+            return null
+        }
+        if (stamp == fileStamp) return fileAllowlist
+        fileStamp = stamp
+        fileAllowlist = runCatching {
+            file.readLines().asSequence()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && it != SELF }
+                .toSet()
+        }.onFailure {
+            reportPrefsDiagnostic("visibility allowlist file read failed: ${it.javaClass.simpleName}", Log.WARN)
+        }.getOrNull()
+        return fileAllowlist
     }
 
     /** Called under prefsLock; never make a Provider call from system_server for diagnostics. */
