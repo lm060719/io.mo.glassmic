@@ -2,6 +2,7 @@ package io.mo.glassmic.ui.library
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import androidx.activity.result.contract.ActivityResultContracts
 
 /**
@@ -38,5 +39,17 @@ class OpenMultipleAudioViaFiles : ActivityResultContracts.OpenMultipleDocuments(
             "com.google.android.documentsui",
             "com.android.documentsui"
         )
+    }
+}
+
+/** Persistent, read-only access to a user-selected local directory. */
+class OpenAudioFolderViaFiles : ActivityResultContracts.OpenDocumentTree() {
+    override fun createIntent(context: Context, input: Uri?): Intent = super.createIntent(context, input).apply {
+        putExtra(Intent.EXTRA_LOCAL_ONLY, true)
+        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+        listOf("com.google.android.documentsui", "com.android.documentsui").firstOrNull { pkg ->
+            Intent(this).setPackage(pkg).resolveActivity(context.packageManager) != null
+        }?.let { setPackage(it) }
     }
 }

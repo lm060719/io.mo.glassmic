@@ -1,5 +1,7 @@
 package io.mo.glassmic.audio
 
+import android.content.Context
+import android.net.Uri
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -16,7 +18,8 @@ import java.nio.ByteOrder
  */
 class FileAudioSource(
     private val clip: AudioClip,
-    private val filePath: String
+    context: Context,
+    uri: Uri
 ) : AudioSourceProvider {
 
     override val type = SourceType.FILE
@@ -43,19 +46,27 @@ class FileAudioSource(
     private var convertedOffset = 0
 
     init {
-        extractor.setDataSource(filePath)
-        val trackIndex = (0 until extractor.trackCount).firstOrNull { i ->
-            extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
-        } ?: error("No decodable audio track in ${clip.fileName}")
+        var pendingCodec: MediaCodec? = null
+        try {
+            extractor.setDataSource(context, uri, null)
+            val trackIndex = (0 until extractor.trackCount).firstOrNull { i ->
+                extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
+            } ?: error("No decodable audio track in ${clip.fileName}")
 
-        extractor.selectTrack(trackIndex)
-        val fmt = extractor.getTrackFormat(trackIndex)
-        sourceSampleRate = fmt.getIntegerOrDefault(MediaFormat.KEY_SAMPLE_RATE, sourceSampleRate)
-        sourceChannels = fmt.getIntegerOrDefault(MediaFormat.KEY_CHANNEL_COUNT, sourceChannels)
+            extractor.selectTrack(trackIndex)
+            val fmt = extractor.getTrackFormat(trackIndex)
+            sourceSampleRate = fmt.getIntegerOrDefault(MediaFormat.KEY_SAMPLE_RATE, sourceSampleRate)
+            sourceChannels = fmt.getIntegerOrDefault(MediaFormat.KEY_CHANNEL_COUNT, sourceChannels)
 
-        codec = MediaCodec.createDecoderByType(fmt.getString(MediaFormat.KEY_MIME)!!)
-        codec.configure(fmt, null, null, 0)
-        codec.start()
+            codec = MediaCodec.createDecoderByType(fmt.getString(MediaFormat.KEY_MIME)!!)
+            pendingCodec = codec
+            codec.configure(fmt, null, null, 0)
+            codec.start()
+        } catch (failure: Exception) {
+            runCatching { pendingCodec?.release() }
+            extractor.release()
+            throw failure
+        }
     }
 
     override suspend fun read(out: ByteBuffer, sampleRate: Int, channels: Int): Int = mutex.withLock {

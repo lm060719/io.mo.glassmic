@@ -24,7 +24,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext ctx: Context): GlassDatabase =
         Room.databaseBuilder(ctx, GlassDatabase::class.java, GlassDatabase.DB_NAME)
-            .fallbackToDestructiveMigration()
+            .addMigrations(GlassDatabase.MIGRATION_1_2)
             .build()
 
     @Provides

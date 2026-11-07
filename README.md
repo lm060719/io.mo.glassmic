@@ -9,6 +9,7 @@ GlassMic is an open-source virtual microphone and audio pipeline testing module 
 ## Features
 
 - Import local audio files such as MP3, WAV, M4A, AAC, OGG, and FLAC.
+- Link local folders to discover and play audio directly, with optional subfolders and automatic refresh when opening the library.
 - Manage audio clips and groups.
 - Use playback policies: loop, silence after end, or return to the real microphone.
 - Restore the last selected audio source after the app process is killed.
@@ -55,6 +56,14 @@ Open the floating window's menu and tap "🗣 Text-to-Speech". Type your text, t
 4. Reboot the device so the module is loaded cleanly.
 5. Open GlassMic, complete onboarding, grant permissions, import an audio file, and select it as the current source.
 6. Start GlassMic from the main screen when you want the virtual microphone to be active.
+
+## Linked folders
+
+In **Audio Library → Link folder**, choose a local directory and optionally enable **Include subfolders**. A folder group appears automatically; audio plays from the original files without copying them into the app. The library refreshes when opened or resumed; **Refresh folders** scans on demand. Scanning is bounded to 20,000 entries per folder tree.
+
+**Remove from library** hides a linked clip without deleting its original file, and it stays removed across refreshes. **Manage group → Restore removed clips** brings it back. **Unlink folder** removes only the group and its index. Existing imported groups continue to store their own copies.
+
+If the directory is moved, its permission is revoked, or the app is restored from backup, use **Manage group → Grant access to original folder again** and choose the same directory. Folder links do not back up the external audio files; a restored index alone does not grant access to them. Android restricts selection of some directories, including the storage root and the Download directory itself; select an allowed subfolder instead.
 
 ## How It Works
 

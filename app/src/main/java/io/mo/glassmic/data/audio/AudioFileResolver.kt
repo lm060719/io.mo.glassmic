@@ -1,6 +1,10 @@
 package io.mo.glassmic.data.audio
 
 import android.content.Context
+import android.media.MediaPlayer
+import android.net.Uri
+import io.mo.glassmic.audio.FileAudioSource
+import io.mo.glassmic.data.db.AudioClipEntity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import javax.inject.Inject
@@ -22,6 +26,17 @@ class AudioFileResolver @Inject constructor(
     }
 
     fun audioRoot(): File = root
+
+    /** Linked documents are opened in place; only imported clips resolve to private files. */
+    private fun uriFor(clip: AudioClipEntity): Uri =
+        clip.sourceUri?.let(Uri::parse) ?: Uri.fromFile(fileFor(clip.relativePath))
+
+    fun openSource(clip: AudioClipEntity): FileAudioSource =
+        FileAudioSource(clip.toModel(), context, uriFor(clip))
+
+    fun configurePreview(player: MediaPlayer, clip: AudioClipEntity) {
+        player.setDataSource(context, uriFor(clip))
+    }
 
     fun fileFor(relativePath: String): File = File(root, relativePath)
 

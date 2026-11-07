@@ -30,10 +30,10 @@ interface AudioDao {
     suspend fun maxGroupOrder(): Int
 
     // ============ clips ============
-    @Query("SELECT * FROM audio_clips ORDER BY createdAt DESC")
+    @Query("SELECT * FROM audio_clips WHERE hidden = 0 ORDER BY createdAt DESC")
     fun observeAllClips(): Flow<List<AudioClipEntity>>
 
-    @Query("SELECT * FROM audio_clips WHERE groupId = :groupId ORDER BY sortOrder, createdAt")
+    @Query("SELECT * FROM audio_clips WHERE groupId = :groupId AND hidden = 0 ORDER BY sortOrder, createdAt")
     fun observeClipsInGroup(groupId: String): Flow<List<AudioClipEntity>>
 
     @Query("SELECT * FROM audio_clips WHERE id = :id")
@@ -50,4 +50,19 @@ interface AudioDao {
 
     @Query("UPDATE audio_clips SET displayName = :name WHERE id = :id")
     suspend fun renameClip(id: String, name: String)
+
+    @Query("SELECT * FROM audio_groups WHERE folderUri IS NOT NULL ORDER BY sortOrder")
+    suspend fun linkedGroups(): List<AudioGroupEntity>
+
+    @Query("SELECT * FROM audio_clips WHERE groupId = :groupId")
+    suspend fun clipsInGroup(groupId: String): List<AudioClipEntity>
+
+    @Query("UPDATE audio_clips SET hidden = 1 WHERE id = :id AND sourceUri IS NOT NULL")
+    suspend fun hideLinkedClip(id: String)
+
+    @Query("UPDATE audio_clips SET hidden = 0 WHERE groupId = :groupId AND sourceUri IS NOT NULL")
+    suspend fun restoreLinkedClips(groupId: String)
+
+    @Query("UPDATE audio_groups SET includeSubfolders = :include WHERE id = :id")
+    suspend fun setIncludeSubfolders(id: String, include: Boolean)
 }

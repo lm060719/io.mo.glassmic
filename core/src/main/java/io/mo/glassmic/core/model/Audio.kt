@@ -1,7 +1,8 @@
 package io.mo.glassmic.core.model
 
 /**
- * 音频片段。relativePath 相对于 AudioFileResolver.audioRoot()。
+ * 音频片段元数据。导入文件的 relativePath 相对于 AudioFileResolver.audioRoot()；
+ * 关联文件的 relativePath 为空，由 app 层使用独立保存的 URI 打开。
  * 不在这里持有 File 引用——core 模块不能依赖 android.content。
  */
 data class AudioClip(

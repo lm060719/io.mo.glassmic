@@ -142,6 +142,23 @@
 
     <!-- 音频库 -->
     <string name="library_title">音频库</string>
+    <string name="library_folder_add">关联文件夹</string>
+    <string name="library_folder_choose">选择文件夹</string>
+    <string name="library_folder_description">选择本地文件夹，自动识别音频并直接播放，不复制原文件。进入音频库时自动刷新，也可手动刷新。</string>
+    <string name="library_folder_recursive">包含子文件夹</string>
+    <string name="library_folder_hint">来自关联文件夹 · 直接读取原文件</string>
+    <string name="library_folder_refresh">刷新文件夹</string>
+    <string name="library_folder_scanning">正在扫描关联文件夹…</string>
+    <string name="library_folder_empty">没有可用音频。将音频放入文件夹后刷新，或在管理分组中恢复已移除的音频。</string>
+    <string name="library_folder_unavailable">无法读取文件夹，已有记录已保留。请确认文件夹仍存在；若授权失效或恢复过备份，请在管理分组中重新选择原文件夹授权后刷新。</string>
+    <string name="library_folder_skipped">%1$d 个音频无法读取或识别，已跳过。请检查文件是否完整及格式是否受支持。</string>
+    <string name="library_folder_too_large">文件夹超过 20000 个条目，扫描已停止，已有记录已保留。请选择更小的目录或关闭子文件夹扫描。</string>
+    <string name="library_folder_reauthorize">重新授权原文件夹</string>
+    <string name="library_folder_restore">恢复已移除的音频</string>
+    <string name="library_folder_unlink">取消关联</string>
+    <string name="library_folder_unlink_confirm">取消关联将移除此分组及音频索引，不会删除文件夹中的原文件。是否继续？</string>
+    <string name="library_folder_remove">从音频库移除</string>
+    <string name="library_folder_remove_confirm">只从音频库移除，不删除原文件。刷新不会重新添加，可在管理分组中恢复。</string>
     <string name="library_import">导入音频</string>
     <string name="library_new_group">新建片段组</string>
     <string name="library_empty_groups">还没有片段组，先新建一个</string>
@@ -446,7 +463,7 @@
     <string name="library_manage_group">管理分组</string>
     <string name="library_set_current">设为当前音源</string>
     <string name="library_set_current_done">已设为当前音源：%1$s</string>
-    <string name="library_set_current_failed">设置失败：音频文件丢失或无法解码</string>
+    <string name="library_set_current_failed">无法播放：文件丢失、读取授权失效或格式不受支持</string>
     <string name="library_delete_group">删除片段组</string>
     <string name="settings_section_audio">音频</string>
     <string name="settings_section_diag_about">诊断与关于</string>

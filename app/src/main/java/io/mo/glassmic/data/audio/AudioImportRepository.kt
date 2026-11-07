@@ -73,7 +73,8 @@ class AudioImportRepository @Inject constructor(
         groupId: String,
         displayNameOverride: String? = null
     ): AudioClipEntity = withContext(Dispatchers.IO) {
-        require(dao.findGroup(groupId) != null) { "片段组不存在: $groupId" }
+        val group = requireNotNull(dao.findGroup(groupId)) { "片段组不存在: $groupId" }
+        require(group.folderUri == null) { "请将音频放入关联文件夹后刷新" }
 
         val resolver1 = context.contentResolver
         val mimeType = resolver1.getType(uri) ?: "audio/mpeg"
@@ -121,6 +122,10 @@ class AudioImportRepository @Inject constructor(
 
     suspend fun deleteClip(clipId: String) = withContext(Dispatchers.IO) {
         val clip = dao.findClip(clipId) ?: return@withContext
+        if (clip.sourceUri != null) {
+            dao.hideLinkedClip(clipId)
+            return@withContext
+        }
         dao.deleteClip(clipId)
         resolver.deleteFile(clip.relativePath)
     }

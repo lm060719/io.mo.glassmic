@@ -1,5 +1,6 @@
 package io.mo.glassmic.ui.library
 
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -28,17 +29,21 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +59,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.mo.glassmic.R
 import io.mo.glassmic.core.model.PlaybackPolicy
 import io.mo.glassmic.data.db.AudioClipEntity
@@ -79,6 +87,8 @@ fun LibraryScreen(vm: LibraryViewModel = hiltViewModel()) {
     val state by vm.state.collectAsState()
     val totalClips by vm.totalClips.collectAsState()
     val notice by vm.notice.collectAsState()
+    val refreshing by vm.refreshing.collectAsState()
+    val folderErrors by vm.folderErrors.collectAsState()
     val toast = remember { SnackbarHostState() }
     val context = LocalContext.current
     val t = glass
@@ -90,6 +100,24 @@ fun LibraryScreen(vm: LibraryViewModel = hiltViewModel()) {
     var confirmDeleteGroup by remember { mutableStateOf<AudioGroupEntity?>(null) }
     var confirmDeleteClip by remember { mutableStateOf<AudioClipEntity?>(null) }
     var renamingClip by remember { mutableStateOf<AudioClipEntity?>(null) }
+    var showLinkFolder by rememberSaveable { mutableStateOf(false) }
+    var includeSubfolders by rememberSaveable { mutableStateOf(false) }
+    val folderContract = remember { OpenAudioFolderViaFiles() }
+    val folderLauncher = rememberLauncherForActivityResult(folderContract) { uri ->
+        if (uri != null) vm.linkFolder(uri, includeSubfolders)
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, vm) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.refreshFolders()
+            if (event == Lifecycle.Event.ON_STOP) vm.stopPreview()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            vm.stopPreview()
+        }
+    }
 
     // 批量导入：优先调用系统自带〖文件〗(DocumentsUI)，支持多选
     val importContract = remember { OpenMultipleAudioViaFiles() }
@@ -150,6 +178,13 @@ fun LibraryScreen(vm: LibraryViewModel = hiltViewModel()) {
                 )
             }
 
+            item {
+                TextButton(
+                    onClick = { includeSubfolders = false; showLinkFolder = true },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp)
+                ) { Text(stringResource(R.string.library_folder_add)) }
+            }
+
             if (selectedGroup != null) {
                 item {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -169,7 +204,27 @@ fun LibraryScreen(vm: LibraryViewModel = hiltViewModel()) {
                 }
             }
 
-            item {
+            if (selectedGroup?.folderUri != null) {
+                item {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(stringResource(R.string.library_folder_hint), fontSize = 13.sp, color = t.ink3)
+                        folderErrors[selectedGroup.id]?.let { Text(it, fontSize = 13.sp, color = t.err) }
+                        TextButton(enabled = !refreshing, onClick = vm::refreshFolders) {
+                            Text(stringResource(R.string.library_folder_refresh))
+                        }
+                    }
+                }
+            }
+            if (refreshing) {
+                item {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp)) {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        Text(stringResource(R.string.library_folder_scanning), fontSize = 12.sp, color = t.ink3)
+                    }
+                }
+            }
+
+            if (state.clips.isEmpty()) item {
                 GlassCard(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
                     radius = 26.dp,
@@ -178,22 +233,27 @@ fun LibraryScreen(vm: LibraryViewModel = hiltViewModel()) {
                     when {
                         state.groups.isEmpty() -> EmptyHint(stringResource(R.string.library_empty_groups))
                         state.selectedGroupId == null -> EmptyHint(stringResource(R.string.library_select_a_group))
-                        state.clips.isEmpty() -> EmptyHint(stringResource(R.string.library_empty_clips))
-                        else -> state.clips.forEach { clip ->
-                            ClipRow(
-                                clip = clip,
-                                isCurrent = clip.id == state.currentClipId,
-                                isPreviewing = clip.id == state.previewClipId,
-                                onSelect = { setCurrent(clip) },
-                                onPreview = { vm.togglePreview(clip) },
-                                onMore = { editingClip = clip }
-                            )
-                        }
+                        else -> EmptyHint(stringResource(if (selectedGroup?.folderUri != null) R.string.library_folder_empty else R.string.library_empty_clips))
                     }
                 }
             }
+            items(state.clips, key = { it.id }) { clip ->
+                GlassCard(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
+                    radius = 26.dp, contentPadding = PaddingValues(6.dp)
+                ) {
+                    ClipRow(
+                        clip = clip,
+                        isCurrent = clip.id == state.currentClipId,
+                        isPreviewing = clip.id == state.previewClipId,
+                        onSelect = { setCurrent(clip) },
+                        onPreview = { vm.togglePreview(clip) },
+                        onMore = { editingClip = clip }
+                    )
+                }
+            }
 
-            if (state.selectedGroupId != null) {
+            if (selectedGroup != null && selectedGroup.folderUri == null) {
                 item {
                     PrimaryButton(
                         text = stringResource(R.string.library_import),
@@ -204,6 +264,30 @@ fun LibraryScreen(vm: LibraryViewModel = hiltViewModel()) {
                 }
             }
         }
+    }
+
+    if (showLinkFolder) {
+        AlertDialog(
+            onDismissRequest = { showLinkFolder = false },
+            title = { Text(stringResource(R.string.library_folder_add)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.library_folder_description))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = includeSubfolders, onCheckedChange = { includeSubfolders = it })
+                        Text(stringResource(R.string.library_folder_recursive))
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLinkFolder = false; folderLauncher.launch(null) }) {
+                    Text(stringResource(R.string.library_folder_choose))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLinkFolder = false }) { Text(stringResource(R.string.library_cancel)) }
+            }
+        )
     }
 
     if (showCreateGroup) {
@@ -234,7 +318,20 @@ fun LibraryScreen(vm: LibraryViewModel = hiltViewModel()) {
                 })
             }
             SheetAction(stringResource(R.string.library_rename), onClick = { editingGroup = null; renamingGroup = g })
-            SheetAction(stringResource(R.string.library_delete_group), color = t.err, onClick = { editingGroup = null; confirmDeleteGroup = g })
+            if (g.folderUri != null) {
+                SheetAction(stringResource(R.string.library_folder_recursive), selected = g.includeSubfolders, onClick = {
+                    vm.setIncludeSubfolders(g); editingGroup = null
+                })
+                SheetAction(stringResource(R.string.library_folder_reauthorize), onClick = {
+                    includeSubfolders = g.includeSubfolders
+                    editingGroup = null
+                    folderLauncher.launch(Uri.parse(g.folderUri))
+                })
+                SheetAction(stringResource(R.string.library_folder_restore), onClick = {
+                    vm.restoreRemoved(g.id); editingGroup = null
+                })
+            }
+            SheetAction(stringResource(if (g.folderUri != null) R.string.library_folder_unlink else R.string.library_delete_group), color = t.err, onClick = { editingGroup = null; confirmDeleteGroup = g })
         }
     }
 
@@ -250,7 +347,8 @@ fun LibraryScreen(vm: LibraryViewModel = hiltViewModel()) {
 
     confirmDeleteGroup?.let { g ->
         ConfirmDialog(
-            text = stringResource(R.string.library_delete_group_confirm),
+            text = stringResource(if (g.folderUri != null) R.string.library_folder_unlink_confirm else R.string.library_delete_group_confirm),
+            title = stringResource(if (g.folderUri != null) R.string.library_folder_unlink else R.string.library_delete),
             onDismiss = { confirmDeleteGroup = null },
             onConfirm = { vm.deleteGroup(g.id); confirmDeleteGroup = null }
         )
@@ -267,7 +365,7 @@ fun LibraryScreen(vm: LibraryViewModel = hiltViewModel()) {
                 SheetAction(stringResource(R.string.library_set_current), onClick = { editingClip = null; setCurrent(clip) })
             }
             SheetAction(stringResource(R.string.library_rename), onClick = { editingClip = null; renamingClip = clip })
-            SheetAction(stringResource(R.string.library_delete), color = t.err, onClick = { editingClip = null; confirmDeleteClip = clip })
+            SheetAction(stringResource(if (clip.sourceUri != null) R.string.library_folder_remove else R.string.library_delete), color = t.err, onClick = { editingClip = null; confirmDeleteClip = clip })
         }
     }
 
@@ -281,7 +379,8 @@ fun LibraryScreen(vm: LibraryViewModel = hiltViewModel()) {
 
     confirmDeleteClip?.let { clip ->
         ConfirmDialog(
-            text = stringResource(R.string.library_delete_clip_confirm),
+            text = stringResource(if (clip.sourceUri != null) R.string.library_folder_remove_confirm else R.string.library_delete_clip_confirm),
+            title = stringResource(if (clip.sourceUri != null) R.string.library_folder_remove else R.string.library_delete),
             onDismiss = { confirmDeleteClip = null },
             onConfirm = { vm.deleteClip(clip.id); confirmDeleteClip = null }
         )
@@ -506,11 +605,11 @@ private fun ClipRenameDialog(initial: String, onDismiss: () -> Unit, onConfirm: 
 }
 
 @Composable
-private fun ConfirmDialog(text: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+private fun ConfirmDialog(text: String, title: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(28.dp),
-        title = { Text(stringResource(R.string.library_delete), fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
+        title = { Text(title, fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
         text = { Text(text, fontSize = 14.sp) },
         confirmButton = {
             TextButton(onClick = onConfirm) { Text(stringResource(R.string.library_confirm), color = glass.err) }

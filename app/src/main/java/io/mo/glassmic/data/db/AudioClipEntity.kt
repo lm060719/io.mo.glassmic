@@ -1,6 +1,7 @@
 package io.mo.glassmic.data.db
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -30,7 +31,10 @@ data class AudioClipEntity(
     val sampleRate: Int,
     val channels: Int,
     val createdAt: Long,
-    val sortOrder: Int
+    val sortOrder: Int,
+    val sourceUri: String? = null,
+    @ColumnInfo(defaultValue = "0") val sourceModifiedAt: Long = 0,
+    @ColumnInfo(defaultValue = "0") val hidden: Boolean = false
 ) {
     fun toModel(): AudioClip = AudioClip(
         id = id,

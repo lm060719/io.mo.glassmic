@@ -1,10 +1,14 @@
 package io.mo.glassmic.ui.library
 
 import android.media.MediaPlayer
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import io.mo.glassmic.R
+import io.mo.glassmic.data.audio.AudioFolderRepository
 import io.mo.glassmic.core.model.PlaybackPolicy
 import io.mo.glassmic.data.audio.AudioFileResolver
 import io.mo.glassmic.data.audio.AudioImportRepository
@@ -21,10 +25,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class LibraryUiState(
@@ -41,14 +50,80 @@ class LibraryViewModel @Inject constructor(
     private val importer: AudioImportRepository,
     private val resolver: AudioFileResolver,
     private val playback: PlaybackController,
+    private val folders: AudioFolderRepository,
+    @ApplicationContext private val context: Context,
     configStore: ConfigStore,
-    audioDao: AudioDao
+    private val audioDao: AudioDao
 ) : ViewModel() {
 
     private val _selectedGroupId = MutableStateFlow<String?>(null)
     private val _previewClipId = MutableStateFlow<String?>(null)
     private val _error = MutableStateFlow<String?>(null)
     private var previewPlayer: MediaPlayer? = null
+    private var previewJob: Job? = null
+    private val _refreshing = MutableStateFlow(false)
+    val refreshing = _refreshing.asStateFlow()
+    private val _folderErrors = MutableStateFlow<Map<String, String>>(emptyMap())
+    val folderErrors = _folderErrors.asStateFlow()
+    private var refreshPending = false
+
+    fun refreshFolders() {
+        if (_refreshing.value) {
+            refreshPending = true
+            return
+        }
+        _refreshing.value = true
+        viewModelScope.launch {
+            try {
+                do {
+                    refreshPending = false
+                    _folderErrors.value = folders.refreshAll()
+                    reconcileRemovedClips()
+                } while (refreshPending)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                _error.value = context.getString(R.string.library_folder_unavailable)
+            } finally {
+                _refreshing.value = false
+            }
+        }
+    }
+
+    fun linkFolder(uri: Uri, includeSubfolders: Boolean) {
+        viewModelScope.launch {
+            try {
+                val group = folders.link(uri, includeSubfolders)
+                groupsFlow.first { groups -> groups.any { it.id == group.id } }
+                selectGroup(group.id)
+                refreshFolders()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                _error.value = context.getString(R.string.library_folder_unavailable)
+            }
+        }
+    }
+
+    fun setIncludeSubfolders(group: AudioGroupEntity) {
+        viewModelScope.launch {
+            folders.setIncludeSubfolders(group.id, !group.includeSubfolders)
+            refreshFolders()
+        }
+    }
+
+    fun restoreRemoved(groupId: String) {
+        viewModelScope.launch {
+            folders.restoreRemoved(groupId)
+            refreshFolders()
+        }
+    }
+
+    private suspend fun reconcileRemovedClips() {
+        val preview = _previewClipId.value?.let { audioDao.findClip(it) }
+        if (preview == null || preview.hidden) stopPreview()
+        playback.clearRemovedClip()
+    }
 
     private val groupsFlow = audioDao.observeGroups()
     private val currentClipIdFlow = configStore.flow
@@ -71,7 +146,7 @@ class LibraryViewModel @Inject constructor(
         LibraryUiState(
             groups = groups,
             selectedGroupId = effectiveSelected,
-            clips = clips,
+            clips = clips.filter { it.groupId == effectiveSelected },
             currentClipId = current,
             previewClipId = preview,
             errorMessage = err
@@ -102,6 +177,7 @@ class LibraryViewModel @Inject constructor(
     fun createGroup(name: String, emoji: String) {
         viewModelScope.launch {
             val g = importer.createGroup(name, emoji, null)
+            groupsFlow.first { groups -> groups.any { it.id == g.id } }
             _selectedGroupId.value = g.id
         }
     }
@@ -121,7 +197,9 @@ class LibraryViewModel @Inject constructor(
     fun deleteGroup(groupId: String) {
         viewModelScope.launch {
             stopPreview()
-            importer.deleteGroup(groupId)
+            if (audioDao.findGroup(groupId)?.folderUri != null) folders.unlink(groupId)
+            else importer.deleteGroup(groupId)
+            reconcileRemovedClips()
             if (_selectedGroupId.value == groupId) _selectedGroupId.value = null
         }
     }
@@ -158,6 +236,7 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             if (_previewClipId.value == clipId) stopPreview()
             importer.deleteClip(clipId)
+            reconcileRemovedClips()
         }
     }
 
@@ -167,27 +246,38 @@ class LibraryViewModel @Inject constructor(
             return
         }
         stopPreview()
-        val file = resolver.fileFor(clip.relativePath)
-        if (!file.exists()) {
-            _error.value = "文件丢失"
-            return
-        }
-        runCatching {
-            previewPlayer = MediaPlayer().apply {
-                setDataSource(file.absolutePath)
-                setOnCompletionListener { stopPreview() }
-                setOnErrorListener { _, _, _ -> stopPreview(); true }
-                prepare()
-                start()
+        _previewClipId.value = clip.id
+        previewJob = viewModelScope.launch {
+            val player = MediaPlayer()
+            var handedOff = false
+            try {
+                withContext(Dispatchers.IO) { resolver.configurePreview(player, clip) }
+                handedOff = true
+                previewPlayer = player
+                player.setOnPreparedListener { if (previewPlayer === it) it.start() }
+                player.setOnCompletionListener { if (previewPlayer === it) stopPreview() }
+                player.setOnErrorListener { failed, _, _ ->
+                    if (previewPlayer === failed) {
+                        _error.value = context.getString(R.string.library_set_current_failed)
+                        stopPreview()
+                    }
+                    true
+                }
+                player.prepareAsync()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                _error.value = context.getString(R.string.library_set_current_failed)
+                stopPreview()
+            } finally {
+                if (!handedOff) player.release()
             }
-            _previewClipId.value = clip.id
-        }.onFailure {
-            _error.value = "试听失败: ${it.message}"
-            stopPreview()
         }
     }
 
     fun stopPreview() {
+        previewJob?.cancel()
+        previewJob = null
         previewPlayer?.runCatching { if (isPlaying) stop() }
         previewPlayer?.runCatching { release() }
         previewPlayer = null

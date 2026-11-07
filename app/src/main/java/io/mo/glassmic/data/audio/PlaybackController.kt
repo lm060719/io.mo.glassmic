@@ -42,6 +42,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -67,6 +69,7 @@ class PlaybackController @Inject constructor(
     private val liveCapture: LiveCaptureController,
     @ApplicationContext private val context: Context
 ) : MemoryReleasable {
+    private val sourceSwitchMutex = Mutex()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -86,26 +89,28 @@ class PlaybackController @Inject constructor(
         }
     }
 
-    /** 设置某个片段为当前虚拟麦克风音源。文件不存在则自动清掉数据库记录并返回 false。 */
+    /** Linked documents keep their records on access failure so reauthorization can recover them. */
     suspend fun setCurrentClip(clipId: String, startPaused: Boolean = false): Boolean = withContext(Dispatchers.IO) {
-        val clip = dao.findClip(clipId) ?: return@withContext false
-        val file = resolver.fileFor(clip.relativePath)
-        if (!file.exists()) {
-            GlassLog.b("Playback") { "音频文件丢失，清理记录: ${clip.relativePath}" }
-            dao.deleteClip(clipId)
-            return@withContext false
-        }
-        val src = runCatching { FileAudioSource(clip.toModel(), file.absolutePath) }
-            .onFailure { GlassLog.b("Playback") { "FileAudioSource 创建失败: ${it.message}" } }
-            .getOrNull() ?: return@withContext false
+        sourceSwitchMutex.withLock {
+            val clip = dao.findClip(clipId) ?: return@withContext false
+            if (clip.hidden) return@withContext false
+            if (clip.sourceUri == null && !resolver.fileFor(clip.relativePath).exists()) {
+                GlassLog.b("Playback") { "音频文件丢失，清理记录: ${clip.relativePath}" }
+                dao.deleteClip(clipId)
+                return@withContext false
+            }
+            val src = runCatching { resolver.openSource(clip) }
+                .onFailure { GlassLog.b("Playback") { "FileAudioSource 创建失败: ${it.message}" } }
+                .getOrNull() ?: return@withContext false
 
-        publisher.setSource(src, groupId = clip.groupId, audioId = clip.id)
-        publisher.setPaused(startPaused)
-        configStore.update {
-            it.setCurrentGroupId(clip.groupId)
-            it.setCurrentAudioId(clip.id)
+            publisher.setSource(src, groupId = clip.groupId, audioId = clip.id)
+            publisher.setPaused(startPaused)
+            configStore.update {
+                it.setCurrentGroupId(clip.groupId)
+                it.setCurrentAudioId(clip.id)
+            }
+            true
         }
-        true
     }
 
     // ============ 文字转语音（先生成后播放） ============
@@ -272,11 +277,13 @@ class PlaybackController @Inject constructor(
             _ttsDelayRemainingMs.value = 0L
         }
 
-        publisher.setSource(BufferedPcmSource(pcm))
-        publisher.setPaused(false)
-        configStore.update {
-            it.setCurrentGroupId("")
-            it.setCurrentAudioId("")
+        sourceSwitchMutex.withLock {
+            publisher.setSource(BufferedPcmSource(pcm))
+            publisher.setPaused(false)
+            configStore.update {
+                it.setCurrentGroupId("")
+                it.setCurrentAudioId("")
+            }
         }
         true
     }
@@ -354,18 +361,32 @@ class PlaybackController @Inject constructor(
 
     /** 切回真实麦克风：释放当前 file source，运行态置 REAL_MIC，清空持久化选中。 */
     suspend fun setRealMic() = withContext(Dispatchers.IO) {
-        publisher.setPaused(false)
-        publisher.setSource(SilenceSource)
-        runtime.setSource(SourceType.REAL_MIC, groupId = null, audioId = null, durationMs = 0L)
-        configStore.update {
-            it.setCurrentGroupId("")
-            it.setCurrentAudioId("")
+        sourceSwitchMutex.withLock {
+            publisher.setPaused(false)
+            publisher.setSource(SilenceSource)
+            runtime.setSource(SourceType.REAL_MIC, groupId = null, audioId = null, durationMs = 0L)
+            configStore.update {
+                it.setCurrentGroupId("")
+                it.setCurrentAudioId("")
+            }
         }
     }
 
     suspend fun restorePersistedClip(): Boolean {
         val clipId = configStore.current().currentAudioId.takeIf { it.isNotBlank() } ?: return false
         return setCurrentClip(clipId, startPaused = true)
+    }
+
+    /** Removing a selected clip stops injection without unexpectedly enabling the real mic. */
+    suspend fun clearRemovedClip() = withContext(Dispatchers.IO) {
+        sourceSwitchMutex.withLock {
+            val id = configStore.current().currentAudioId.takeIf { it.isNotBlank() } ?: return@withContext
+            val clip = dao.findClip(id)
+            if (clip != null && !clip.hidden) return@withContext
+            publisher.setSource(SilenceSource)
+            runtime.setSource(SourceType.SILENCE, groupId = null, audioId = null, durationMs = 0L)
+            configStore.update { it.setCurrentGroupId("").setCurrentAudioId("") }
+        }
     }
 
     val isPaused: Boolean get() = publisher.isPaused

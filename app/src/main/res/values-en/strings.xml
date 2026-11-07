@@ -142,6 +142,23 @@
 
     <!-- Audio library -->
     <string name="library_title">Audio Library</string>
+    <string name="library_folder_add">Link folder</string>
+    <string name="library_folder_choose">Choose folder</string>
+    <string name="library_folder_description">Choose a local folder to discover and play audio directly, without copying files. It refreshes when you open the library, or you can refresh manually.</string>
+    <string name="library_folder_recursive">Include subfolders</string>
+    <string name="library_folder_hint">Linked folder · Plays original files</string>
+    <string name="library_folder_refresh">Refresh folders</string>
+    <string name="library_folder_scanning">Scanning linked folders…</string>
+    <string name="library_folder_empty">No audio available. Add audio to the folder and refresh, or restore removed clips from Manage group.</string>
+    <string name="library_folder_unavailable">Cannot read the folder. Existing records are preserved. Check that it still exists. If access expired or a backup was restored, select the original folder again from Manage group to grant access, then refresh.</string>
+    <string name="library_folder_skipped">Skipped %1$d unreadable or unrecognized audio files. Check that the files are complete and use a supported format.</string>
+    <string name="library_folder_too_large">The folder exceeds 20000 entries. Scanning stopped and existing records were preserved. Choose a smaller folder or disable subfolders.</string>
+    <string name="library_folder_reauthorize">Grant access to original folder again</string>
+    <string name="library_folder_restore">Restore removed clips</string>
+    <string name="library_folder_unlink">Unlink folder</string>
+    <string name="library_folder_unlink_confirm">Remove this group and its audio index? Original files in the folder will remain untouched.</string>
+    <string name="library_folder_remove">Remove from library</string>
+    <string name="library_folder_remove_confirm">Only removes the library entry, leaving the original file untouched. Refreshing will not add it again. You can restore it from Manage group.</string>
     <string name="library_import">Import Audio</string>
     <string name="library_new_group">New Clip Group</string>
     <string name="library_empty_groups">No clip groups yet — create one first</string>
@@ -446,7 +463,7 @@
     <string name="library_manage_group">Manage group</string>
     <string name="library_set_current">Set as current source</string>
     <string name="library_set_current_done">Current source: %1$s</string>
-    <string name="library_set_current_failed">Failed: file missing or not decodable</string>
+    <string name="library_set_current_failed">Cannot play: file missing, read access expired, or unsupported format</string>
     <string name="library_delete_group">Delete group</string>
     <string name="settings_section_audio">Audio</string>
     <string name="settings_section_diag_about">Diagnostics &amp; about</string>
