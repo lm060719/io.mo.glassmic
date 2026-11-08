@@ -233,8 +233,9 @@ class SharedPcmPublisher @Inject constructor(
         queueCapacity: Int = 16,
         framed: Boolean = false
     ): String {
-        // 设置 Linux 内核 pipe buffer 至 32KB，兼顾低延迟与抗调度抖动
-        runCatching {
+        // 设置 Linux 内核 pipe buffer 至 32KB，兼顾低延迟与抗调度抖动。
+        // Os.fcntlInt 是 API 30 才公开的；Android 10 保持内核默认 64KB。
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) runCatching {
             android.system.Os.fcntlInt(writeFd.fileDescriptor, 1031 /* F_SETPIPE_SZ */, bufferBytes)
         }
         val id = buildConsumerId(consumerPackage)

@@ -511,14 +511,14 @@ class FloatingWindowService : LifecycleService() {
             val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
                 WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
             )
-            bounds.inset(insets.left, insets.top, insets.right, insets.bottom)
+            bounds.shrinkBy(insets.left, insets.top, insets.right, insets.bottom)
         } else {
             val metrics = DisplayMetrics()
             wm.defaultDisplay.getRealMetrics(metrics)
             bounds = Rect(0, 0, metrics.widthPixels, metrics.heightPixels)
             appliedInsets?.let { insets ->
                 val cutout = insets.displayCutout
-                bounds.inset(
+                bounds.shrinkBy(
                     maxOf(insets.stableInsetLeft, cutout?.safeInsetLeft ?: 0),
                     maxOf(insets.stableInsetTop, cutout?.safeInsetTop ?: 0),
                     maxOf(insets.stableInsetRight, cutout?.safeInsetRight ?: 0),
@@ -533,6 +533,14 @@ class FloatingWindowService : LifecycleService() {
         if (bounds.isEmpty || bounds == overlayBoundsFlow.value) return
         overlayBoundsFlow.value = bounds
         scheduleClampToBounds()
+    }
+
+    /**
+     * 四边分别内缩。`Rect.inset(int, int, int, int)` 是 API 31 才加的，minSdk 29 的
+     * Android 10/11 上直接 NoSuchMethodError，开悬浮球即闪退。
+     */
+    private fun Rect.shrinkBy(left: Int, top: Int, right: Int, bottom: Int) {
+        set(this.left + left, this.top + top, this.right - right, this.bottom - bottom)
     }
 
     /** 合并同一帧的 Insets / 布局回调，避免对尚未生效的位置重复叠加修正量。 */

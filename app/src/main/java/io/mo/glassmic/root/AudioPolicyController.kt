@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.system.ErrnoException
@@ -348,9 +349,15 @@ class AudioPolicyController @Inject constructor(
             try {
                 val fd = Os.open(current.fifo.absolutePath, OsConstants.O_WRONLY or OsConstants.O_NONBLOCK, 0)
                 val parcel = try {
-                    val flags = Os.fcntlInt(fd, OsConstants.F_GETFL, 0)
-                    Os.fcntlInt(fd, OsConstants.F_SETFL, flags and OsConstants.O_NONBLOCK.inv())
-                    ParcelFileDescriptor.dup(fd)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        val flags = Os.fcntlInt(fd, OsConstants.F_GETFL, 0)
+                        Os.fcntlInt(fd, OsConstants.F_SETFL, flags and OsConstants.O_NONBLOCK.inv())
+                        ParcelFileDescriptor.dup(fd)
+                    } else {
+                        // Os.fcntlInt 是 API 30 才公开的，Android 10 上 NoSuchMethodError。
+                        // 非阻塞 open 成功说明读端已就位，此时再以阻塞方式 open 会立即返回。
+                        ParcelFileDescriptor.open(current.fifo, ParcelFileDescriptor.MODE_WRITE_ONLY)
+                    }
                 } finally { Os.close(fd) }
                 try {
                     current.consumer = publisher.get().attachConsumer(pkg, 48000, 1, parcel,
