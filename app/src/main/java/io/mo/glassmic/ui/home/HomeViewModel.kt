@@ -12,6 +12,7 @@ import io.mo.glassmic.core.model.SourceType
 import io.mo.glassmic.data.audio.PlaybackController
 import io.mo.glassmic.data.config.AppLocale
 import io.mo.glassmic.data.config.ConfigStore
+import io.mo.glassmic.data.config.StaleScopeCleaner
 import io.mo.glassmic.data.db.AudioDao
 import io.mo.glassmic.data.runtime.BootGateRepository
 import io.mo.glassmic.data.runtime.AudioStatsRepository
@@ -72,8 +73,14 @@ class HomeViewModel @Inject constructor(
     private val liveCapture: io.mo.glassmic.root.LiveCaptureController,
     audioDao: AudioDao,
     hookStatusRepo: HookStatusRepository,
-    audioStatsRepo: AudioStatsRepository
+    audioStatsRepo: AudioStatsRepository,
+    staleScopeCleaner: StaleScopeCleaner
 ) : ViewModel() {
+    init {
+        // 勾选过的应用被卸载后从生效范围里剔除，否则首页会显示空白图标（#43）。
+        staleScopeCleaner.start()
+    }
+
     val policyStatus = audioPolicy.status
 
     private val groupsFlow = audioDao.observeGroups()

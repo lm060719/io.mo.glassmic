@@ -9,6 +9,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.mo.glassmic.core.Constants
 import io.mo.glassmic.data.config.ConfigStore
+import io.mo.glassmic.data.config.StaleScopeCleaner
 import io.mo.glassmic.data.config.audioPolicyTargets
 import io.mo.glassmic.data.runtime.LsposedServiceManager
 import io.mo.glassmic.data.runtime.ScopeRequestResult
@@ -75,7 +76,8 @@ data class ScopeUiState(
 class ScopeViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val configStore: ConfigStore,
-    private val lsposedServiceManager: LsposedServiceManager
+    private val lsposedServiceManager: LsposedServiceManager,
+    private val staleScopeCleaner: StaleScopeCleaner
 ) : ViewModel() {
 
     private val _query = MutableStateFlow("")
@@ -126,9 +128,7 @@ class ScopeViewModel @Inject constructor(
         viewModelScope.launch {
             lsposedServiceManager.frameworkScope.collect { frameworkList ->
                 if (frameworkList != null) {
-                    val validFramework = frameworkList.filter { pkg ->
-                        pkg != Constants.APP_PACKAGE && pkg.isNotBlank()
-                    }
+                    val validFramework = withContext(Dispatchers.IO) { validScope(frameworkList) }
                     configStore.update {
                         it.clearWhitelist().addAllWhitelist(validFramework.sorted())
                         it.setScopeMode(ScopeMode.WHITELIST)
@@ -144,7 +144,7 @@ class ScopeViewModel @Inject constructor(
             if (configStore.current().injectionBackend == InjectionBackend.AUDIO_POLICY) return@launch
             val list = lsposedServiceManager.syncScope()
             if (list != null) {
-                val valid = list.filter { pkg -> pkg != Constants.APP_PACKAGE && pkg.isNotBlank() }
+                val valid = withContext(Dispatchers.IO) { validScope(list) }
                 configStore.update {
                     it.clearWhitelist().addAllWhitelist(valid.sorted())
                     it.setScopeMode(ScopeMode.WHITELIST)
@@ -157,6 +157,12 @@ class ScopeViewModel @Inject constructor(
             }
         }
     }
+
+    /** 框架作用域里可能残留已卸载应用（#43），同步进白名单前过滤掉。 */
+    private fun validScope(list: List<String>): List<String> =
+        list.filter { pkg ->
+            pkg != Constants.APP_PACKAGE && pkg.isNotBlank() && staleScopeCleaner.isInstalled(pkg)
+        }
 
     fun toggleApp(pkg: String) {
         viewModelScope.launch {
@@ -241,6 +247,7 @@ class ScopeViewModel @Inject constructor(
         _loading.value = true
         viewModelScope.launch {
             _apps.value = withContext(Dispatchers.IO) { queryInstalledApps() }
+            staleScopeCleaner.prune()
             _loading.value = false
         }
     }
