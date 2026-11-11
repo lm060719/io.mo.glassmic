@@ -17,15 +17,21 @@ GlassMic 是一个面向 Root Android 设备和 LSPosed 的开源虚拟麦克风
 - 播放中点击悬浮球弹出迷你控制条：播放/暂停、进度条拖动、换音源。
 - 悬浮球透明度可调节。
 - 运行时通过前台服务和常驻通知保持可见。
-- LSPosed 推荐作用域限制为 Android / 系统框架。
-- 支持 AudioRecord 和 AAudio 输入链路拦截。
+- LSPosed 集成。作用域需要包含 `android` / `system` 以及每个目标应用。
+- 拦截 Java 层 `AudioRecord`，以及 native 层 AAudio、OpenSL ES 和 `AudioRecord::read` 采集链路；纯音频 `MediaRecorder` 录音在应用内接管。
+- 实验性 AudioPolicy（Root）后端：不依赖 LSPosed Hook，按应用 UID 注入，支持多选与“全部应用”。
+- 关联本地文件夹：自动识别目录内的音频。
+- 实验功能：把其他应用正在播放的声音实时作为虚拟麦克风音源（需 Root）。
+- 悬浮窗与设置页提供注入音量滑块（0–300%）。
 - 为不同录音客户端按需转换采样率和声道数。
 - 提供诊断包、日志、hook 状态和拦截统计。
 - 实验功能包含高增益和更强的噪音环境模拟。
 - 文字转语音（TTS）：输入文字即可把合成语音喂给目标 App，测试语音识别 / 语音输入场景比准备音频文件方便。
 - TTS 采用「先生成、后播放」两步，播放可重复。
-- 开箱即用的离线系统 TTS，另可选在线 AI TTS，兼容 OpenAI、Google Gemini、小米 MiMo 协议，支持自定义接口地址与模型、拉取模型列表、测试连接与效果试听。
+- 开箱即用的离线系统 TTS，另可选在线 AI TTS，兼容 OpenAI、Google Gemini、小米 MiMo、Fish Audio 协议，支持自定义接口地址与模型、拉取模型列表、测试连接与效果试听。
 - MiMo 支持预置音色、文本描述定制音色（voicedesign）、以及基于音频样本复刻音色（voiceclone，≤60 秒 / ≤5MB）。
+- Fish Audio 支持选择音色，可选先经 LLM 自动插入情绪 / 音效标签再合成。
+- API Key 使用 Android Keystore 密钥加密保存。
 
 ## 文字转语音（TTS）
 
@@ -50,7 +56,7 @@ GlassMic 是一个面向 Root Android 设备和 LSPosed 的开源虚拟麦克风
 
 1. 安装 APK。
 2. 在 LSPosed 中启用 GlassMic 模块。
-3. 推荐作用域使用 `android` 和 `system`以及目标生效应用。
+3. 在 LSPosed 作用域中勾选 `android`、`system` 以及每个需要虚拟麦克风的应用，然后完全重启这些应用。不在 LSPosed 作用域内的应用不会被注入，与 GlassMic 自身的生效列表无关。
 4. 重启设备，让模块完整加载。
 5. 打开 GlassMic，完成首次引导并授予权限。
 6. 导入音频文件，并设置为当前音源。

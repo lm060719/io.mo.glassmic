@@ -19,15 +19,21 @@ jobs:
       - name: Sync release to target repo
         env:
           GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+          # 经环境变量传入，避免把用户输入直接拼进 shell 脚本（表达式注入）。
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           SOURCE_REPO="lm060719/io.mo.glassmic"
           TARGET_REPO="Xposed-Modules-Repo/io.mo.glassmic"
           # Support both release trigger and manual dispatch
-          if [ -n "${{ github.event.inputs.tag }}" ]; then
-            TAG="${{ github.event.inputs.tag }}"
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
           else
-            TAG="${{ github.event.release.tag_name }}"
+            TAG="$RELEASE_TAG"
           fi
+          case "$TAG" in
+            ''|*[!A-Za-z0-9._-]*) echo "invalid tag: $TAG" >&2; exit 1 ;;
+          esac
 
           echo "=== Syncing release $TAG ==="
 

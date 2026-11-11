@@ -8,7 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 @Database(
     entities = [AudioGroupEntity::class, AudioClipEntity::class],
     version = 2,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class GlassDatabase : RoomDatabase() {
     abstract fun audioDao(): AudioDao

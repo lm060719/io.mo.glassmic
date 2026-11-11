@@ -15,9 +15,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
@@ -35,10 +35,18 @@ class ConfigStore @Inject constructor(
         scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     )
 
-    val flow: Flow<AppConfig> = dataStore.data.onEach { cfg ->
-        // 每次配置变更同步给 Xposed 进程
-        syncToXShared(cfg)
-        syncVisibilityAllowlist(cfg)
+    val flow: Flow<AppConfig> = dataStore.data
+
+    init {
+        // 可见性白名单只在这里同步一次：以前放在 flow.onEach 里，每个 collector、每次任意
+        // 配置变更都会重复写 prefs、调 LSPosed 服务和 root 写文件。
+        // 首个值也要同步（升级后 system_server 侧的白名单可能还是旧的）。
+        CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+            dataStore.data
+                .map { cfg -> visibilityAllowlist(cfg) }
+                .distinctUntilChanged()
+                .collect { allowed -> runCatching { syncVisibilityAllowlist(allowed) } }
+        }
     }
 
     val snapshotFlow: Flow<ConfigSnapshot> = flow.map { it.toSnapshot() }
@@ -51,46 +59,24 @@ class ConfigStore @Inject constructor(
     suspend fun current(): AppConfig = dataStore.data.first()
 
     suspend fun update(transform: (AppConfig.Builder) -> Unit) {
-        val updated = dataStore.updateData { current ->
+        dataStore.updateData { current ->
             current.toBuilder().also(transform).build()
         }
-        // DataStore 的 flow 不一定此刻正被收集；作用域变化后主动同步一次，
-        // 避免 system_server 在下一次 UI 订阅前仍拿到旧白名单。
-        syncVisibilityAllowlist(updated)
+        // 白名单变化由 init 中的常驻 collector 同步，这里不再重复。
     }
 
-    private fun syncToXShared(cfg: AppConfig) {
-        // 关键：使用 Context.MODE_WORLD_READABLE 让 Xposed 进程能读取
-        // Android 8.0+ 默认禁用，需在 application 标签下加 android:sharedUserId 或使用 LSPosed 的 XSharedPreferences
-        // LSPosed 现代版本支持直接读取 App 的 SharedPreferences，无需 WORLD_READABLE
-        @Suppress("DEPRECATION", "WorldReadableFiles")
-        val prefs = try {
-            context.getSharedPreferences(Constants.XSHARED_PREFS_NAME, Context.MODE_WORLD_READABLE)
-        } catch (t: SecurityException) {
-            context.getSharedPreferences(Constants.XSHARED_PREFS_NAME, Context.MODE_PRIVATE)
-        }
-        prefs.edit().apply {
-            putBoolean("global_switch", cfg.globalSwitch)
-            putString("scope_mode", cfg.scopeMode.name)
-            putStringSet("whitelist", cfg.whitelistList.toSet())
-            putStringSet("blacklist", cfg.blacklistList.toSet())
-            putBoolean("onboarding_completed", cfg.onboardingCompleted)
-            putString("current_group_id", cfg.currentGroupId)
-            putString("current_audio_id", cfg.currentAudioId)
-            putString("playback_policy", cfg.playbackPolicy.name)
-        }.apply()
-    }
     /**
      * 把 App 内目标白名单同步给 system_server 的包可见性 Hook。
      *
      * 这份数据只决定“哪些调用方可以强制看到 GlassMic 本包”，不改变实际音频生效范围；
      * 真正是否替换麦克风仍由 RuntimeProvider / ScopeMatcher 再校验一次。
      */
-    private fun syncVisibilityAllowlist(cfg: AppConfig) {
-        val allowed = cfg.whitelistList
-            .asSequence()
-            .filter { it.isNotBlank() && it != Constants.APP_PACKAGE }
-            .toSet()
+    private fun visibilityAllowlist(cfg: AppConfig): Set<String> = cfg.whitelistList
+        .asSequence()
+        .filter { it.isNotBlank() && it != Constants.APP_PACKAGE }
+        .toSet()
+
+    private fun syncVisibilityAllowlist(allowed: Set<String>) {
 
         @Suppress("DEPRECATION", "WorldReadableFiles")
         val prefs = runCatching {

@@ -47,8 +47,6 @@ class GlassForegroundService : LifecycleService() {
     @Inject lateinit var playbackSessionDiagnostics: PlaybackSessionDiagnostics
     @Inject lateinit var audioPolicy: io.mo.glassmic.root.AudioPolicyController
 
-    private var wakeLock: android.os.PowerManager.WakeLock? = null
-
     override fun onCreate() {
         super.onCreate()
         ensureChannel()
@@ -57,14 +55,8 @@ class GlassForegroundService : LifecycleService() {
         ProviderGate.enable(this)
         // 创建运行哨兵——onDestroy 时删除
         runCatching { File(filesDir, Constants.RUNNING_SENTINEL).createNewFile() }
-        // 申请 Partial WakeLock，防止前台大型 3D 游戏高负载运行时系统激进冻结音频后台推流
-        runCatching {
-            val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
-            wakeLock = pm?.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "glassmic:audiopush")?.apply {
-                setReferenceCounted(false)
-                acquire(10 * 60 * 60 * 1000L) // 最多持有 10 小时兜底
-            }
-        }
+        // WakeLock 由 SharedPcmPublisher 在有 consumer（有 App 正在录音）时持有，
+        // 服务空闲时不再阻止系统休眠。
         startForegroundCompat()
         runtime.setEnabled(true)
         audioPolicy.start()
@@ -97,12 +89,6 @@ class GlassForegroundService : LifecycleService() {
         playbackSessionDiagnostics.stop()
         runtime.setEnabled(false)
         fairMemory.stopSampling()
-        runCatching {
-            if (wakeLock?.isHeld == true) {
-                wakeLock?.release()
-            }
-            wakeLock = null
-        }
         // 禁用跨进程 Provider——切断 AMS 强制拉起链路，服务停止后不再被无故复活。
         ProviderGate.disable(this)
         // 清理运行哨兵——表示本次正常退出

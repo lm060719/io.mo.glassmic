@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
@@ -9,7 +8,9 @@ plugins {
 
 android {
     namespace = "io.mo.glassmic"
-    compileSdk = 36
+    // 最新 AndroidX（core 1.19 / lifecycle 2.11 / Compose 1.12）要求以 API 37 编译；
+    // targetSdk 不变，运行时行为不受影响。
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "io.mo.glassmic"
@@ -17,7 +18,8 @@ android {
         targetSdk = 35
         versionCode = 30
         versionName = "1.5.0"
-        resourceConfigurations += listOf("zh-rCN", "en")
+        // 只打包中英文资源；resourceConfigurations 在 AGP 9 新 DSL 中已弃用，改用 localeFilters
+        androidResources.localeFilters += listOf("zh-rCN", "en")
     }
 
     buildTypes {
@@ -42,6 +44,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // 仓库根目录 tests/ 下的回归检查（纯 JVM，不依赖设备）作为单元测试源码编译，
+    // 由 src/test 里的 JUnit 入口逐个调用：.\gradlew.bat :app:testDebugUnitTest
+    sourceSets.getByName("test").java.srcDirs("../tests/audio", "../tests/hooks")
+
     packaging {
         resources.excludes += setOf(
             "/META-INF/{AL2.0,LGPL2.1}",
@@ -59,6 +65,12 @@ android {
 }
 
 kotlin { jvmToolchain(17) }
+
+// Room 导出每个数据库版本的 schema（app/schemas/，需提交），迁移改动可以对照历史 diff，
+// 也能用 MigrationTestHelper 验证。
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
 
 // ============== Proto Lite ==============
 protobuf {
@@ -120,6 +132,8 @@ dependencies {
     // 协程
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.android)
+
+    testImplementation(libs.junit)
 
     // libxposed service（用于向 LSPosed 动态申请应用作用域）
     implementation(libs.libxposed.service)

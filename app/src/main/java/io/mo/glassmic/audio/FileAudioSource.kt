@@ -8,13 +8,18 @@ import android.media.MediaFormat
 import io.mo.glassmic.core.model.AudioClip
 import io.mo.glassmic.core.model.SourceType
 import io.mo.glassmic.log.GlassLog
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * 将导入的音频文件解码并通过 [Pcm16Converter] 高保真重采样/混音为请求的 PCM 格式。
+ *
+ * 线程模型：广播线程调用 [read]，切歌/Seek/EOF 处理可能在其他线程调用 [release] /
+ * [reset] / [seekTo]。四者共用同一把锁——否则切歌时在解码中途释放 MediaCodec 会让
+ * read 抛异常，被广播循环当成音频引擎故障，把刚换上的新音源顶成静音。
+ * read 体内没有挂起点，用阻塞锁即可；释放最多等一次 read（几十毫秒）。
  */
 class FileAudioSource(
     private val clip: AudioClip,
@@ -26,7 +31,8 @@ class FileAudioSource(
 
     private val extractor = MediaExtractor()
     private val codec: MediaCodec
-    private val mutex = Mutex()
+    private val lock = ReentrantLock()
+    private var released = false
     private val info = MediaCodec.BufferInfo()
 
     private var inputDone = false
@@ -69,7 +75,9 @@ class FileAudioSource(
         }
     }
 
-    override suspend fun read(out: ByteBuffer, sampleRate: Int, channels: Int): Int = mutex.withLock {
+    override suspend fun read(out: ByteBuffer, sampleRate: Int, channels: Int): Int = lock.withLock {
+        // 已被切走并释放：codec 不可再用，返回"暂无数据"，广播循环下一轮会读新音源。
+        if (released) return 0
         val targetSampleRate = sampleRate.takeIf { it > 0 } ?: 48_000
         val targetChannels = channels.takeIf { it > 0 } ?: 1
         val bytesPerTargetFrame = targetChannels * BYTES_PER_SAMPLE
@@ -222,6 +230,11 @@ class FileAudioSource(
     override fun durationMs(): Long = clip.durationMs
 
     override fun reset() {
+        lock.withLock { resetLocked() }
+    }
+
+    private fun resetLocked() {
+        if (released) return
         runCatching {
             extractor.seekTo(0, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
             codec.flush()
@@ -235,7 +248,12 @@ class FileAudioSource(
         }.onFailure { GlassLog.b("FileAudio") { "reset failed: ${it.message}" } }
     }
 
-    suspend fun seekTo(positionMs: Long) = mutex.withLock {
+    suspend fun seekTo(positionMs: Long) {
+        lock.withLock { seekLocked(positionMs) }
+    }
+
+    private fun seekLocked(positionMs: Long) {
+        if (released) return
         runCatching {
             val safe = positionMs.coerceAtLeast(0L).coerceAtMost(clip.durationMs)
             extractor.seekTo(safe * 1000, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
@@ -251,9 +269,13 @@ class FileAudioSource(
     }
 
     override fun release() {
-        runCatching { codec.stop() }
-        runCatching { codec.release() }
-        runCatching { extractor.release() }
+        lock.withLock {
+            if (released) return
+            released = true
+            runCatching { codec.stop() }
+            runCatching { codec.release() }
+            runCatching { extractor.release() }
+        }
     }
 
     private companion object {

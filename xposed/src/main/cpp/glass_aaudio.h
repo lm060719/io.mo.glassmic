@@ -47,6 +47,15 @@ Decision get_decision();
 void note_capture(CapturePath path);
 
 /**
+ * 供 Kotlin 轮询线程在空闲时阻塞等待：任一路径出现录音回调即返回 true，超时返回 false。
+ * 音频线程只在有等待者时写一次 eventfd，录音期间不产生系统调用。
+ */
+bool wait_for_capture(int32_t timeout_ms);
+
+/** 当前 PCM fd 是否仍可读（未设置、或已读到 EOF/错误都返回 false）。 */
+bool pcm_fd_alive();
+
+/**
  * 设置当前可读取的 PCM pipe fd（由 Kotlin 通过 ContentResolver 打开后传下来）。
  * 传 -1 表示当前没有可用 fd。设置新 fd 会自动 close 旧 fd。
  */

@@ -3,6 +3,8 @@ name: 构建正式签名 APK
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -40,23 +42,17 @@ jobs:
           log-accepted-android-sdk-licenses: false
 
       - name: 安装项目要求的 SDK 和原生工具链
-        run: sdkmanager "platforms;android-35" "platforms;android-36" "build-tools;36.0.0" "cmake;3.22.1" "ndk;26.1.10909125"
+        run: sdkmanager "platforms;android-35" "platforms;android-37.0" "build-tools;36.0.0" "cmake;3.22.1" "ndk;26.1.10909125"
 
       - name: 编译诊断检查类及 Release 安装包
         run: bash ./gradlew :app:compileDebugKotlin :xposed:compileDebugKotlin :app:assembleRelease --no-daemon --console=plain
 
-      - name: 执行音频与回调时序回归检查
-        run: |
-          set -euo pipefail
-          stdlib=$(find "$HOME/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-stdlib" -name 'kotlin-stdlib-*.jar' ! -name '*sources*' ! -name '*javadoc*' | sort -V | tail -1)
-          test -n "$stdlib"
-          mkdir -p build/audio-regression
-          classpath="app/build/tmp/kotlin-classes/debug:xposed/build/tmp/kotlin-classes/debug:$stdlib:build/audio-regression"
-          javac -encoding UTF-8 -cp "$classpath" -d build/audio-regression tests/audio/AudioRegression.java tests/audio/TapTimingRegression.java
-          java -cp "$classpath" AudioRegression
-          java -cp "$classpath" TapTimingRegression
+      - name: 执行回归检查（tests/ 下的 JVM 回归，经 Gradle 单元测试运行）
+        run: bash ./gradlew :app:testDebugUnitTest --no-daemon --console=plain
 
       - name: 使用正式密钥签名并验证安装包
+        # PR 只做构建与回归检查；签名材料只在 main 上使用。
+        if: github.event_name != 'pull_request'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -86,9 +82,25 @@ jobs:
           printf 'versionName=%s\nversionCode=%s\ncommit=%s\nworkflow=%s/%s/actions/runs/%s\n' "$version" "$version_code" "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > dist/build-info.txt
 
       - name: 上传正式安装包、签名信息与校验值
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: GlassMic-signed-release-${{ github.sha }}
           path: dist/
           if-no-files-found: error
           retention-days: 30
+
+  native-regression:
+    # pcm_regression.cpp 直接编译 glass_aaudio.cpp（替换掉 Android 头文件），需要 MSVC。
+    if: github.repository == 'lm060719/io.mo.glassmic'
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - name: 检出本次提交
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: 编译并运行 native PCM 回归
+        shell: pwsh
+        run: ./tests/native/run.ps1

@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
 }
 
 android {
@@ -37,7 +36,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            // 稳定版 CMake，元数据 schema 与 AGP 8.x 匹配（避免 CXX5304 警告）
+            // 稳定版 CMake，与 NDK r26b 搭配；本项目 AGP 为 9.x（见 gradle/libs.versions.toml）
             version = "3.22.1"
         }
     }

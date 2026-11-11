@@ -1,25 +1,25 @@
 [versions]
 agp = "9.3.0"
 kotlin = "2.2.10"
-ksp = "2.2.10-2.0.2"
-compose-bom = "2024.12.01"
+ksp = "2.3.13"
+compose-bom = "2026.09.00"
 hilt = "2.60.1"
-hilt-navigation = "1.2.0"
-lifecycle = "2.8.7"
-nav-compose = "2.8.5"
-room = "2.6.1"
-datastore = "1.1.1"
-coroutines = "1.9.0"
-protobuf = "0.9.4"
+hilt-navigation = "1.4.0"
+lifecycle = "2.11.0"
+nav-compose = "2.10.2"
+room = "2.8.5"
+datastore = "1.3.0"
+coroutines = "1.11.0"
+protobuf = "0.10.1"
 protobuf-runtime = "3.25.5"
 accompanist = "0.36.0"
-documentfile = "1.0.1"
+documentfile = "1.1.0"
 
 [libraries]
 # AndroidX 基础
-androidx-core-ktx = { module = "androidx.core:core-ktx", version = "1.15.0" }
-androidx-appcompat = { module = "androidx.appcompat:appcompat", version = "1.7.0" }
-androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.9.3" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version = "1.19.1" }
+androidx-appcompat = { module = "androidx.appcompat:appcompat", version = "1.8.0" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version = "1.13.0" }
 androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
 androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 androidx-lifecycle-service = { module = "androidx.lifecycle:lifecycle-service", version.ref = "lifecycle" }
@@ -61,13 +61,15 @@ libxposed-service = { module = "io.github.libxposed:service", version = "101.0.0
 # legacy Xposed API 82（compileOnly，用于旧版 LSPosed 兼容入口）
 legacy-xposed-api = { module = "de.robv.android.xposed:api", version = "82" }
 
+# 单元测试（tests/ 下的回归检查经 :app:testDebugUnitTest 运行）
+junit = { module = "junit:junit", version = "4.13.2" }
+
 # 字节跳动 shadowhook：native inline hook 框架，用于劫持 AAudio
 shadowhook = { module = "com.bytedance.android:shadowhook", version = "1.0.10" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }

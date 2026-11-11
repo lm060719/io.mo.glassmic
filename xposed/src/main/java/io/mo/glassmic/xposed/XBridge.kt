@@ -47,22 +47,6 @@ object XBridge {
     /** 注入入口设置：101 = libxposed API 101，82 = legacy。仅用于诊断状态展示。 */
     @Volatile var apiVersion: Int = 101
 
-    fun pingModuleLoaded(ctx: Context, callerPackage: String, api: Int = 101) {
-        runCatching {
-            val extras = Bundle().apply {
-                putString("package", callerPackage)
-                putLong("time", System.currentTimeMillis())
-                putInt("api", api)
-            }
-            ctx.contentResolver.call(
-                Uri.parse("content://${Constants.PROVIDER_RUNTIME}"),
-                Constants.METHOD_XPOSED_PING,
-                callerPackage,
-                extras
-            )
-        }
-    }
-
     // ============== 拦截统计累计 + 节流上报 ==============
     private const val REPORT_EVERY_READS = 50
     private const val REPORT_EVERY_MS = 1500L

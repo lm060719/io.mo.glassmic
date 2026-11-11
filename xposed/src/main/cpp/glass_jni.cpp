@@ -60,6 +60,16 @@ Java_io_mo_glassmic_xposed_NativeAAudioHook_nativeTapActive(JNIEnv* env, jclass)
     return tap_active() ? JNI_TRUE : JNI_FALSE;
 }
 
+JNIEXPORT jboolean JNICALL
+Java_io_mo_glassmic_xposed_NativeAAudioHook_nativeWaitCapture(JNIEnv* env, jclass, jint timeout_ms) {
+    return wait_for_capture(timeout_ms) ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_io_mo_glassmic_xposed_NativeAAudioHook_nativePcmFdAlive(JNIEnv* env, jclass) {
+    return pcm_fd_alive() ? JNI_TRUE : JNI_FALSE;
+}
+
 /**
  * dup() a FileDescriptor and return the new fd number.
  * Used on API < 33 where ParcelFileDescriptor.detachFd() is unavailable.

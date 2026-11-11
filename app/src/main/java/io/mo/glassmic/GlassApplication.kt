@@ -12,7 +12,6 @@ import io.mo.glassmic.log.GlassLog
 import io.mo.glassmic.memory.FairMemoryController
 import io.mo.glassmic.provider.ProviderGate
 import io.mo.glassmic.proto.AppLanguage
-import io.mo.glassmic.service.SafeModeWatchdog
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.util.Locale
@@ -23,7 +22,6 @@ class GlassApplication : Application() {
 
     @Inject lateinit var safeModeRepo: SafeModeRepository
     @Inject lateinit var bootGate: BootGateRepository
-    @Inject lateinit var watchdog: SafeModeWatchdog
     @Inject lateinit var configStore: ConfigStore
     @Inject lateinit var fairMemory: FairMemoryController
 
@@ -52,7 +50,6 @@ class GlassApplication : Application() {
         }
 
         bootGate.refreshBootId()
-        watchdog.attach()
 
         // 公平运行内存（ITGSA / HyperOS）：监听系统预警与查杀广播，3 秒内回执
         fairMemory.initialize()

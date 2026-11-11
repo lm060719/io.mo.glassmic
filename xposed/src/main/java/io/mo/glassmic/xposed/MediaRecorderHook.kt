@@ -29,8 +29,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * AudioRecord（已被 [AudioRecordHook] 覆盖 → 自动填入虚拟 PCM）+ MediaCodec(AAC) + MediaMuxer
  * 写到应用原本指定的同一输出。其余情况一律放行真实录音（= 当前行为，安全默认）。
  *
- * 不处理：视频 / Camcorder 分支、AMR / 裸 AAC-ADTS 容器、setMaxDuration 的 info 回调投递、
- * legacy API 82 入口接线。详见 docs/2026-10-17_方案-MediaRecorder采集覆盖.md。
+ * API 101 与 legacy API 82 两个入口共用这一份实现（经 [MethodHooker] 适配）。
+ *
+ * 不处理：视频 / Camcorder 分支、AMR / 裸 AAC-ADTS 容器、setMaxDuration 的 info 回调投递。
  */
 object MediaRecorderHook {
 
@@ -69,18 +70,21 @@ object MediaRecorderHook {
         val takeover: Boolean get() = pipeline != null
     }
 
-    private sealed interface HookDecision {
-        data object Proceed : HookDecision
-        data class Replace(val value: Any?) : HookDecision
-    }
+    /** libxposed API 101 入口。 */
+    fun install(api: XposedInterface, appCtx: Context, callerPkg: String) =
+        install(ModernHooker(api, TAG), appCtx, callerPkg)
 
-    fun install(api: XposedInterface, appCtx: Context, callerPkg: String) {
+    /** legacy API 82 入口。 */
+    fun installLegacy(appCtx: Context, callerPkg: String) =
+        install(LegacyHooker(TAG), appCtx, callerPkg)
+
+    private fun install(api: MethodHooker, appCtx: Context, callerPkg: String) {
         if (installed) return
         synchronized(this) {
             if (installed) return
             if (!XposedHookGate.tryMarkMediaRecorderHookInstalled()) {
                 installed = true
-                api.log(Log.INFO, TAG, "skip duplicate MediaRecorder hook in $callerPkg")
+                api.log(Log.INFO, "skip duplicate MediaRecorder hook in $callerPkg")
                 return
             }
             installed = true
@@ -91,7 +95,7 @@ object MediaRecorderHook {
         val longp = Long::class.javaPrimitiveType!!
 
         hook(api, appCtx, callerPkg, find(cls, "setAudioSource", intp)) { _, _, chain ->
-            stateOf(chain).audioSource = chain.getArg(0) as Int
+            stateOf(chain).audioSource = chain.arg(0) as Int
             HookDecision.Proceed
         }
         hook(api, appCtx, callerPkg, find(cls, "setVideoSource", intp)) { _, _, chain ->
@@ -99,41 +103,41 @@ object MediaRecorderHook {
             HookDecision.Proceed
         }
         hook(api, appCtx, callerPkg, find(cls, "setOutputFormat", intp)) { _, _, chain ->
-            stateOf(chain).outputFormat = chain.getArg(0) as Int
+            stateOf(chain).outputFormat = chain.arg(0) as Int
             HookDecision.Proceed
         }
         hook(api, appCtx, callerPkg, find(cls, "setAudioEncoder", intp)) { _, _, chain ->
-            stateOf(chain).audioEncoder = chain.getArg(0) as Int
+            stateOf(chain).audioEncoder = chain.arg(0) as Int
             HookDecision.Proceed
         }
         hook(api, appCtx, callerPkg, find(cls, "setAudioSamplingRate", intp)) { _, _, chain ->
-            (chain.getArg(0) as Int).let { if (it > 0) stateOf(chain).sampleRate = it }
+            (chain.arg(0) as Int).let { if (it > 0) stateOf(chain).sampleRate = it }
             HookDecision.Proceed
         }
         hook(api, appCtx, callerPkg, find(cls, "setAudioChannels", intp)) { _, _, chain ->
-            (chain.getArg(0) as Int).let { if (it > 0) stateOf(chain).channels = it }
+            (chain.arg(0) as Int).let { if (it > 0) stateOf(chain).channels = it }
             HookDecision.Proceed
         }
         hook(api, appCtx, callerPkg, find(cls, "setAudioEncodingBitRate", intp)) { _, _, chain ->
-            (chain.getArg(0) as Int).let { if (it > 0) stateOf(chain).bitRate = it }
+            (chain.arg(0) as Int).let { if (it > 0) stateOf(chain).bitRate = it }
             HookDecision.Proceed
         }
         hook(api, appCtx, callerPkg, find(cls, "setMaxDuration", intp)) { _, _, chain ->
-            stateOf(chain).maxDurationMs = chain.getArg(0) as Int
+            stateOf(chain).maxDurationMs = chain.arg(0) as Int
             HookDecision.Proceed
         }
         hook(api, appCtx, callerPkg, find(cls, "setOutputFile", String::class.java)) { _, _, chain ->
-            stateOf(chain).apply { outputPath = chain.getArg(0) as? String; outputFd = null }
+            stateOf(chain).apply { outputPath = chain.arg(0) as? String; outputFd = null }
             HookDecision.Proceed
         }
         hook(api, appCtx, callerPkg, find(cls, "setOutputFile", FileDescriptor::class.java)) { _, _, chain ->
-            stateOf(chain).apply { outputFd = chain.getArg(0) as? FileDescriptor; outputPath = null }
+            stateOf(chain).apply { outputFd = chain.arg(0) as? FileDescriptor; outputPath = null }
             HookDecision.Proceed
         }
         find(cls, "setOutputFile", java.io.File::class.java)?.let { m ->
             hook(api, appCtx, callerPkg, m) { _, _, chain ->
                 stateOf(chain).apply {
-                    outputPath = (chain.getArg(0) as? java.io.File)?.absolutePath; outputFd = null
+                    outputPath = (chain.arg(0) as? java.io.File)?.absolutePath; outputFd = null
                 }
                 HookDecision.Proceed
             }
@@ -146,12 +150,12 @@ object MediaRecorderHook {
         hook(api, appCtx, callerPkg, find(cls, "release"), ::onResetOrRelease)
         hook(api, appCtx, callerPkg, find(cls, "getMaxAmplitude"), ::onGetMaxAmplitude)
 
-        api.log(Log.INFO, TAG, "installed in $callerPkg")
+        api.log(Log.INFO, "installed in $callerPkg")
     }
 
     // -------- 生命周期 --------
 
-    private fun onPrepare(appCtx: Context, pkg: String, chain: XposedInterface.Chain): HookDecision {
+    private fun onPrepare(appCtx: Context, pkg: String, chain: HookCall): HookDecision {
         val st = stateOf(chain)
 
         if (XBridge.resolveSource(appCtx, pkg) == SourceType.REAL_MIC) return HookDecision.Proceed
@@ -174,7 +178,7 @@ object MediaRecorderHook {
         return HookDecision.Replace(null)
     }
 
-    private fun onStart(appCtx: Context, pkg: String, chain: XposedInterface.Chain): HookDecision {
+    private fun onStart(appCtx: Context, pkg: String, chain: HookCall): HookDecision {
         val st = stateOf(chain)
         val pipeline = st.pipeline ?: return HookDecision.Proceed
         return if (runCatching { pipeline.start() }.isSuccess) {
@@ -187,7 +191,7 @@ object MediaRecorderHook {
         }
     }
 
-    private fun onStop(appCtx: Context, pkg: String, chain: XposedInterface.Chain): HookDecision {
+    private fun onStop(appCtx: Context, pkg: String, chain: HookCall): HookDecision {
         val st = stateOf(chain)
         val pipeline = st.pipeline ?: return HookDecision.Proceed
         runCatching { pipeline.stop() }.onFailure { Log.w(TAG, "stop error: ${it.message}") }
@@ -195,14 +199,14 @@ object MediaRecorderHook {
         return HookDecision.Replace(null)
     }
 
-    private fun onResetOrRelease(appCtx: Context, pkg: String, chain: XposedInterface.Chain): HookDecision {
+    private fun onResetOrRelease(appCtx: Context, pkg: String, chain: HookCall): HookDecision {
         val st = stateOf(chain)
         st.pipeline?.let { runCatching { it.release() } }
         st.pipeline = null
         return HookDecision.Proceed
     }
 
-    private fun onGetMaxAmplitude(appCtx: Context, pkg: String, chain: XposedInterface.Chain): HookDecision {
+    private fun onGetMaxAmplitude(appCtx: Context, pkg: String, chain: HookCall): HookDecision {
         val pipeline = stateOf(chain).pipeline ?: return HookDecision.Proceed
         return HookDecision.Replace(pipeline.drainMaxAmplitude())
     }
@@ -216,40 +220,25 @@ object MediaRecorderHook {
 
     // -------- 工具 --------
 
-    private fun stateOf(chain: XposedInterface.Chain): RecorderState {
-        val recorder = chain.getThisObject() as MediaRecorder
+    private fun stateOf(chain: HookCall): RecorderState {
+        val recorder = chain.thisObject as MediaRecorder
         synchronized(states) {
             return states.getOrPut(recorder) { RecorderState() }
         }
     }
 
     private fun find(cls: Class<*>, name: String, vararg paramTypes: Class<*>?): Method? =
-        runCatching { cls.getMethod(name, *paramTypes) }
-            .recoverCatching { cls.getDeclaredMethod(name, *paramTypes) }
-            .getOrNull()
+        findMethod(cls, name, *paramTypes)
 
     private fun hook(
-        api: XposedInterface,
+        api: MethodHooker,
         appCtx: Context,
         callerPkg: String,
         method: Method?,
-        handler: (Context, String, XposedInterface.Chain) -> HookDecision
+        handler: (Context, String, HookCall) -> HookDecision
     ) {
         method ?: return
-        api.hook(method)
-            .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .intercept { chain ->
-                val decision = try {
-                    handler(appCtx, callerPkg, chain)
-                } catch (t: Throwable) {
-                    api.log(Log.WARN, TAG, "hook error: ${t.message}", t)
-                    HookDecision.Proceed
-                }
-                when (decision) {
-                    HookDecision.Proceed -> chain.proceed()
-                    is HookDecision.Replace -> decision.value
-                }
-            }
+        api.hook(method) { call -> handler(appCtx, callerPkg, call) }
     }
 
     /**

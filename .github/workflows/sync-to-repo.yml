@@ -9,12 +9,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           token: ${{ secrets.SYNC_TOKEN }}
           fetch-depth: 0
 
       - name: Push to target repo
+        env:
+          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
-          git remote add target https://x-access-token:${{ secrets.SYNC_TOKEN }}@github.com/Xposed-Modules-Repo/io.mo.glassmic.git
-          git push target main --force
+          set -euo pipefail
+          git remote add target "https://x-access-token:${SYNC_TOKEN}@github.com/Xposed-Modules-Repo/io.mo.glassmic.git"
+          # 只做快进推送：目标仓库若有源仓库没有的提交，宁可失败等人工处理，也不强推覆盖。
+          if git fetch target main; then
+            if ! git merge-base --is-ancestor FETCH_HEAD HEAD; then
+              echo "::error::Xposed-Modules-Repo/main has commits that are not in this repository; refusing to overwrite them."
+              exit 1
+            fi
+          fi
+          git push target HEAD:main

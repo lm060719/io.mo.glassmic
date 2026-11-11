@@ -19,12 +19,6 @@
 -keep class * extends androidx.lifecycle.ViewModel { *; }
 -keep @dagger.hilt.android.AndroidEntryPoint class * { *; }
 
-# Compose
--keep class androidx.compose.runtime.** { *; }
-
-# Room
--keep class androidx.room.** { *; }
+# Compose / Room 自带 consumer 规则，无需整包 keep（整包 keep 会让 R8 无法裁剪、包体变大）。
+# 实体类保留类名，方便诊断导出与数据库排查时对照。
 -keep @androidx.room.Entity class *
-
-# AudioRecord 相关——别被混淆掉
--keep class android.media.AudioRecord { *; }

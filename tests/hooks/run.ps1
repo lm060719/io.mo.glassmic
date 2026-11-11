@@ -15,7 +15,7 @@ $stdlib = Get-ChildItem -LiteralPath $stdlibRoot -Recurse -Filter 'kotlin-stdlib
 if (-not $stdlib) { throw 'Build the project first to populate the Kotlin stdlib cache.' }
 $out = Join-Path $repo 'build\hook-regression'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
-$classpath = @('app', 'core', 'xposed' | ForEach-Object { Join-Path $repo "$_\build\tmp\kotlin-classes\debug" }) + @($stdlib.FullName, $out)
+$classpath = @('app', 'core', 'xposed' | ForEach-Object { Join-Path $repo "$_\build\intermediates\built_in_kotlinc\debug\compileDebugKotlin\classes" }) + @($stdlib.FullName, $out)
 $classpath = $classpath -join [IO.Path]::PathSeparator
 & javac -encoding UTF-8 -cp $classpath -d $out (Join-Path $PSScriptRoot 'HookDiagnosticsRegression.java')
 if ($LASTEXITCODE -ne 0) { throw 'Hook diagnostics regression compilation failed.' }

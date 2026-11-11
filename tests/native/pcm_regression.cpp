@@ -3,6 +3,8 @@
 #include "../../xposed/src/main/cpp/glass_aaudio.cpp"
 #include <cassert>
 #include <chrono>
+#include <cmath>
+#include <functional>
 #include <iostream>
 #include <vector>
 
@@ -19,6 +21,7 @@ static void prepare(int frames, int channels = 1, const void* stream = nullptr) 
     g_fd_state.sample_rate = 48000;
     g_fd_state.channels = channels;
     g_ring_buffer.clear();
+    reset_resample_states_locked();
     // Register before producing, so large fixtures model an already running stream.
     uint8_t unused = 0;
     for (int path = 1; path <= 4; ++path)
@@ -26,6 +29,21 @@ static void prepare(int frames, int channels = 1, const void* stream = nullptr) 
     std::vector<int16_t> pcm(frames * channels);
     for (int f = 0; f < frames; ++f)
         for (int ch = 0; ch < channels; ++ch) pcm[f * channels + ch] = 1000 + f % 1000;
+    assert(g_ring_buffer.write(reinterpret_cast<uint8_t*>(pcm.data()), pcm.size() * 2) == pcm.size() * 2);
+}
+
+// Like prepare(), but with an arbitrary mono waveform.
+static void prepare_wave(int frames, const std::function<int16_t(int)>& sample) {
+    set_decision(Decision::FILE);
+    std::lock_guard<std::mutex> lock(g_buffer_mutex);
+    g_fd_state.sample_rate = 48000;
+    g_fd_state.channels = 1;
+    g_ring_buffer.clear();
+    reset_resample_states_locked();
+    uint8_t unused = 0;
+    for (int path = 1; path <= 4; ++path) g_ring_buffer.read(&unused, 0, nullptr, path, 2, 0);
+    std::vector<int16_t> pcm(frames);
+    for (int f = 0; f < frames; ++f) pcm[f] = sample(f);
     assert(g_ring_buffer.write(reinterpret_cast<uint8_t*>(pcm.data()), pcm.size() * 2) == pcm.size() * 2);
 }
 
@@ -72,6 +90,14 @@ static void large_buffers() {
             prepare(12000, channels);
             std::vector<int16_t> out(frames * channels + 1, -123);
             assert(fill_pcm(out.data(), SampleFmt::S16, channels, sr, frames, CapturePath::OPENSL));
+            if (sr < 48000) {
+                // Downsampling runs the anti-aliasing low-pass first: the 1000-step sawtooth
+                // fixture rings a little at each wrap, but must stay near its 1000..1999 range.
+                for (int i = 0; i < frames * channels; ++i) assert(out[i] > 800 && out[i] < 2200);
+                assert(out.back() == -123);
+                assert(g_ring_buffer.available_read(nullptr, 4) == 0);
+                continue;
+            }
             for (int f = 0; f < frames; ++f) {
                 const double pos = static_cast<double>(f) * 48000 / sr;
                 const int i = static_cast<int>(pos);
@@ -172,7 +198,8 @@ static void simultaneous_recorders() {
             assert(first[i] == 1000 + block * 480 + i);
             assert(second[i] == first[i]);
         }
-        for (int i = 0; i < 160; ++i) assert(opensl[i] == first[i * 3]);
+        // 16 kHz output is low-passed before decimation: a ramp comes out delayed by a few samples.
+        for (int i = 0; i < 160; ++i) assert(std::abs(opensl[i] - first[i * 3]) <= 8);
     }
     // A new recorder's first request can exceed the normal 80 ms join window.
     prepare(12000);
@@ -185,6 +212,68 @@ static void simultaneous_recorders() {
     fill_pcm(first, SampleFmt::S16, 1, 48000, 480, CapturePath::OPENSL);
     for (int i = 0; i < 480; ++i) assert(first[i] == 1000 + i);
     std::cout << "PASS: independent same-path streams, mixed APIs/rates and fd-lock isolation\n";
+}
+
+static double rms_16k_after_warmup(int16_t (*wave)(int)) {
+    prepare_wave(4800, [wave](int f) { return wave(f); });
+    std::vector<int16_t> out(1600);
+    for (int block = 0; block < 10; ++block)
+        assert(fill_pcm(out.data() + block * 160, SampleFmt::S16, 1, 16000, 160, CapturePath::OPENSL));
+    double sum = 0;
+    for (int i = 320; i < 1600; ++i) sum += static_cast<double>(out[i]) * out[i];
+    return std::sqrt(sum / 1280);
+}
+
+static void anti_aliasing() {
+    constexpr double kPi = 3.14159265358979323846;
+    // 20 kHz would alias to 4 kHz at full amplitude without the low-pass (stateful across 10 blocks).
+    const double alias = rms_16k_after_warmup([](int f) {
+        return static_cast<int16_t>(10000 * std::sin(2 * kPi * 20000.0 * f / 48000.0));
+    });
+    // 1 kHz is well inside the 7.2 kHz passband and must survive (RMS of a 10000 sine is ~7071).
+    const double pass = rms_16k_after_warmup([](int f) {
+        return static_cast<int16_t>(10000 * std::sin(2 * kPi * 1000.0 * f / 48000.0));
+    });
+    assert(alias < 500);
+    assert(pass > 6500 && pass < 7600);
+    // 48 kHz output takes no filter: samples pass through bit-exact.
+    prepare(480);
+    int16_t out[480];
+    assert(fill_pcm(out, SampleFmt::S16, 1, 48000, 480, CapturePath::OPENSL));
+    for (int i = 0; i < 480; ++i) assert(out[i] == 1000 + i);
+    std::cout << "PASS: anti-aliasing low-pass (20 kHz alias rms=" << alias << ", 1 kHz rms=" << pass << ")\n";
+}
+
+static void phase_continuity() {
+    constexpr double kPi = 3.14159265358979323846;
+    // 48k -> 44.1k is not an integer ratio and 160 is not a multiple of 147 (the rate quantum):
+    // reading ceil(160 * 48000 / 44100) = 175 source frames per callback used to drop ~0.85 frame
+    // every block (a 0.5% speed-up plus a phase jump at each boundary).
+    constexpr int kSource = 24000;
+    prepare_wave(kSource, [](int f) {
+        return static_cast<int16_t>(10000 * std::sin(2 * kPi * 440.0 * f / 48000.0));
+    });
+    constexpr int kBlock = 160, kBlocks = 130;
+    std::vector<int16_t> out(kBlock * kBlocks);
+    for (int b = 0; b < kBlocks; ++b)
+        assert(fill_pcm(out.data() + b * kBlock, SampleFmt::S16, 1, 44100, kBlock, CapturePath::OPENSL));
+    // Source consumption follows the exact ratio (+1 frame held for the next interpolation).
+    size_t left = 0;
+    {
+        std::lock_guard<std::mutex> lock(g_buffer_mutex);
+        left = g_ring_buffer.available_read(nullptr, 4) / 2;
+    }
+    const double consumed = static_cast<double>(kSource - left);
+    const double ideal = out.size() * 48000.0 / 44100.0;
+    assert(std::abs(consumed - ideal) <= 2.0);
+    // A smooth 440 Hz sine has a second difference of at most ~A*(2*pi*440/44100)^2 ~ 40;
+    // a 0.85-frame phase jump at a block boundary shows up as several hundred.
+    int worst = 0;
+    for (size_t i = kBlock; i + 1 < out.size(); ++i)
+        worst = std::max(worst, std::abs(out[i + 1] - 2 * out[i] + out[i - 1]));
+    assert(worst < 100);
+    std::cout << "PASS: phase-continuous 48k->44.1k over 160-frame callbacks (consumed " << consumed
+              << " vs ideal " << ideal << ", max 2nd diff " << worst << ")\n";
 }
 
 static void broadcast_history() {
@@ -250,6 +339,8 @@ int main() {
     underruns();
     contention_and_reset();
     simultaneous_recorders();
+    anti_aliasing();
+    phase_continuity();
     broadcast_history();
     capture_heartbeat();
 }

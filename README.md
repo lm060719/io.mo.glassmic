@@ -19,15 +19,21 @@ GlassMic is an open-source virtual microphone and audio pipeline testing module 
 - While playing, tap the ball for a mini control bar: pause/resume, seek, and switch source.
 - Configurable floating ball opacity.
 - Runtime routing through a foreground service and always-visible notification.
-- LSPosed integration with recommended scope limited to Android/system framework.
-- AudioRecord and AAudio input interception paths.
+- LSPosed integration. The scope needs `android` / `system` plus every target app.
+- Capture interception on the Java `AudioRecord` path and natively on AAudio, OpenSL ES and `AudioRecord::read`; audio-only `MediaRecorder` sessions are taken over in-app.
+- Experimental AudioPolicy (root) backend that injects per app UID without LSPosed hooks, with multi-select and an "all apps" mode.
+- Link a local folder: audio files in it are picked up automatically.
+- Experimental live source: use another app's playback audio as the virtual microphone in real time (root).
+- Injection volume slider (0–300%) in the floating window and settings.
 - Per-consumer sample-rate/channel conversion for clients such as WeChat and system recorders.
 - Diagnostics, logs, hook status, and interception statistics.
 - Optional experimental audio effects such as high gain and stronger noise simulation.
 - Text-to-speech (TTS): type text and feed synthesized speech into the target app — handy for testing voice recognition / voice input without preparing audio files.
 - Two-step TTS flow: generate first, then play (replayable).
-- Offline system TTS out of the box, plus optional online AI TTS with OpenAI, Google Gemini, and Xiaomi MiMo protocols, custom endpoint URL and model, model listing, connection test, and audition.
+- Offline system TTS out of the box, plus optional online AI TTS with OpenAI, Google Gemini, Xiaomi MiMo, and Fish Audio protocols, custom endpoint URL and model, model listing, connection test, and audition.
 - MiMo preset voices, voice design (describe a voice in text), and voice cloning from a short reference audio sample (≤60 s / ≤5 MB).
+- Fish Audio voices, with optional LLM auto-tagging that inserts emotion / sound-effect tags before synthesis.
+- API keys are stored encrypted with an Android Keystore key.
 
 ## Text-to-Speech (TTS)
 
@@ -52,7 +58,7 @@ Open the floating window's menu and tap "🗣 Text-to-Speech". Type your text, t
 
 1. Install the APK.
 2. Enable the GlassMic module in LSPosed.
-3. It is recommended to use `android` and `system` for the scope, as well as the target application.
+3. Put `android` and `system` in the LSPosed scope, plus every app that should get the virtual microphone, then fully restart those apps. Apps outside the LSPosed scope are never hooked, whatever GlassMic's own app list says.
 4. Reboot the device so the module is loaded cleanly.
 5. Open GlassMic, complete onboarding, grant permissions, import an audio file, and select it as the current source.
 6. Start GlassMic from the main screen when you want the virtual microphone to be active.

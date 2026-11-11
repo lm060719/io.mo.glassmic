@@ -61,7 +61,9 @@ class LegacyXposedEntry : IXposedHookZygoteInit, IXposedHookLoadPackage {
                             XBridge.currentPackage = pkg
                             XBridge.apiVersion = 82
                             // 同 API 101：不再在 attach 阶段主动 ping RuntimeProvider，避免无故拉起本进程。
-                            LegacyAudioRecordHook.install(ctx, pkg)
+                            AudioRecordHook.installLegacy(ctx, pkg)
+                            // 与 API 101 入口对等：接管纯音频 MediaRecorder（系统媒体服务采集的缺口）。
+                            MediaRecorderHook.installLegacy(ctx, pkg)
                             val nativeOk = NativeAAudioHook.install(ctx, pkg)
                             XposedBridge.log("GlassMic-Legacy: hooks installed in $pkg native=$nativeOk")
                         }.onFailure {

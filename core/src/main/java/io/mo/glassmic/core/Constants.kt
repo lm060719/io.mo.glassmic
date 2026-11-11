@@ -5,9 +5,6 @@ object Constants {
     const val APP_NAME = "GlassMic"
     const val APP_NAME_ZH = "璃麦"
 
-    // 旧版共享配置名；当前 Xposed 侧优先通过 RuntimeProvider 实时查询
-    const val XSHARED_PREFS_NAME = "glassmic_shared"
-
     // Xposed 激活状态探测
     const val XPOSED_STATUS_PREFS = "xposed_status"
     const val XPOSED_STATUS_LAST_PING = "last_ping"

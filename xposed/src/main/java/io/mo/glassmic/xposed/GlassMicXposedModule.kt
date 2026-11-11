@@ -67,31 +67,6 @@ class GlassMicXposedModule : XposedModule() {
         }
     }
 
-    /**
-     * 读取「严格 ROM 兼容」开关。两个来源（任一为真即开启）：
-     *  1. system property（高级用户/排查用，见 Constants.PROP_VISIBILITY_COMPAT）
-     *  2. 模块 remote preferences（App 设置里的开关写入，默认关闭）
-     * 全程异常保护，读不到一律按关闭处理。
-     */
-    private fun isVisibilityCompatEnabled(): Boolean {
-        val propVal = runCatching {
-            @Suppress("PrivateApi")
-            val sp = Class.forName("android.os.SystemProperties")
-            val get = sp.getMethod("get", String::class.java, String::class.java)
-            get.invoke(null, Constants.PROP_VISIBILITY_COMPAT, "") as? String
-        }.getOrNull()
-        val prefVal = runCatching {
-            getRemotePreferences(Constants.REMOTE_PREFS)
-                .getBoolean(Constants.KEY_VISIBILITY_COMPAT, false)
-        }.getOrNull()
-        // 诊断：直接打印两条来源的实际读数，便于远程定位「开关没生效」卡在哪一步。
-        log(
-            Log.INFO, TAG,
-            "visibility compat read: prop='${propVal ?: "<null>"}' remotePref=${prefVal ?: "<null>"}"
-        )
-        return propVal == "1" || prefVal == true
-    }
-
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
         // 音频 hook 由 Application.attach 安装，per-package 回调只用来记日志
         val pkg = param.packageName ?: return

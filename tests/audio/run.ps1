@@ -16,9 +16,10 @@ if (-not $stdlib) { throw 'Build the project first to populate the Kotlin stdlib
 $out = Join-Path $repo 'build\audio-regression'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 $classpath = @(
-    (Join-Path $repo 'app\build\tmp\kotlin-classes\debug'),
-    (Join-Path $repo 'xposed\build\tmp\kotlin-classes\debug'),
-    (Join-Path $repo 'core\build\tmp\kotlin-classes\debug'),
+    # Output directories of AGP 9 built-in Kotlin compilation
+    (Join-Path $repo 'app\build\intermediates\built_in_kotlinc\debug\compileDebugKotlin\classes'),
+    (Join-Path $repo 'xposed\build\intermediates\built_in_kotlinc\debug\compileDebugKotlin\classes'),
+    (Join-Path $repo 'core\build\intermediates\built_in_kotlinc\debug\compileDebugKotlin\classes'),
     $stdlib.FullName, $out
 ) -join [IO.Path]::PathSeparator
 & javac -encoding UTF-8 -cp $classpath -d $out (Join-Path $PSScriptRoot 'AudioRegression.java') (Join-Path $PSScriptRoot 'TapTimingRegression.java') (Join-Path $PSScriptRoot 'FolderIndexRegression.java')

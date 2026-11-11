@@ -14,6 +14,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
@@ -103,7 +105,7 @@ class AiTtsSynthesizer @Inject constructor(
     }
 
     /** OpenAI 风格 GET {base}/models，返回 data[].id。base 从 endpoint 推导（剥掉已知动作后缀）。 */
-    private fun openAiStyleModels(ai: TtsAiConfig, default: String, apiKeyHeader: Boolean): List<String> {
+    private suspend fun openAiStyleModels(ai: TtsAiConfig, default: String, apiKeyHeader: Boolean): List<String> {
         val base = ai.endpoint.ifBlank { default }.trimEnd('/')
             .removeSuffix("/audio/speech").removeSuffix("/chat/completions").trimEnd('/')
         val headers = linkedMapOf("Content-Type" to "application/json")
@@ -115,12 +117,10 @@ class AiTtsSynthesizer @Inject constructor(
         return (0 until data.length()).mapNotNull { data.optJSONObject(it)?.optString("id")?.takeIf { s -> s.isNotBlank() } }
     }
 
-    /** Gemini GET {base}/models?key=，返回 models[].name（去掉 "models/" 前缀）。 */
-    private fun geminiModels(ai: TtsAiConfig): List<String> {
+    /** Gemini GET {base}/models，返回 models[].name（去掉 "models/" 前缀）。 */
+    private suspend fun geminiModels(ai: TtsAiConfig): List<String> {
         val base = ai.endpoint.ifBlank { "https://generativelanguage.googleapis.com/v1beta" }.trimEnd('/')
-        var url = "$base/models"
-        if (ai.apiKey.isNotBlank()) url += "?key=${ai.apiKey}"
-        val bytes = httpGet(url, linkedMapOf("Content-Type" to "application/json"))
+        val bytes = httpGet("$base/models", geminiHeaders(ai))
         val arr = JSONObject(String(bytes, Charsets.UTF_8)).optJSONArray("models") ?: return emptyList()
         return (0 until arr.length()).mapNotNull {
             arr.optJSONObject(it)?.optString("name")?.removePrefix("models/")?.takeIf { s -> s.isNotBlank() }
@@ -128,7 +128,7 @@ class AiTtsSynthesizer @Inject constructor(
     }
 
     // ============ OpenAI /audio/speech ============
-    private fun openAi(ai: TtsAiConfig, req: TtsRequest, sink: PcmSink) {
+    private suspend fun openAi(ai: TtsAiConfig, req: TtsRequest, sink: PcmSink) {
         val base = ai.endpoint.ifBlank { "https://api.openai.com/v1" }.trimEnd('/')
         val url = if (base.endsWith("/audio/speech")) base else "$base/audio/speech"
         val format = ai.format.ifBlank { "wav" }
@@ -148,11 +148,10 @@ class AiTtsSynthesizer @Inject constructor(
     }
 
     // ============ Google Gemini generateContent（AUDIO 模态） ============
-    private fun gemini(ai: TtsAiConfig, req: TtsRequest, sink: PcmSink) {
+    private suspend fun gemini(ai: TtsAiConfig, req: TtsRequest, sink: PcmSink) {
         val base = ai.endpoint.ifBlank { "https://generativelanguage.googleapis.com/v1beta" }.trimEnd('/')
         val model = ai.model.ifBlank { "gemini-2.5-flash-preview-tts" }
-        var url = if (base.contains(":generateContent")) base else "$base/models/$model:generateContent"
-        if (ai.apiKey.isNotBlank()) url += (if (url.contains('?')) "&" else "?") + "key=${ai.apiKey}"
+        val url = if (base.contains(":generateContent")) base else "$base/models/$model:generateContent"
 
         val speechConfig = JSONObject().put(
             "voiceConfig",
@@ -175,7 +174,7 @@ class AiTtsSynthesizer @Inject constructor(
                     .put("speechConfig", speechConfig)
             )
             .toString()
-        val bytes = httpPost(url, linkedMapOf("Content-Type" to "application/json"), body.toByteArray(Charsets.UTF_8))
+        val bytes = httpPost(url, geminiHeaders(ai), body.toByteArray(Charsets.UTF_8))
 
         val root = JSONObject(String(bytes, Charsets.UTF_8))
         val parts = root.optJSONArray("candidates")
@@ -195,12 +194,17 @@ class AiTtsSynthesizer @Inject constructor(
         sink.onError("Gemini 返回未包含音频数据")
     }
 
+    /** Gemini 的 Key 走 x-goog-api-key 头：放在 URL 查询串里会出现在代理、日志和报错信息中。 */
+    private fun geminiHeaders(ai: TtsAiConfig): Map<String, String> = linkedMapOf(
+        "Content-Type" to "application/json"
+    ).apply { if (ai.apiKey.isNotBlank()) put("x-goog-api-key", ai.apiKey) }
+
     // ============ 小米 MiMo（/chat/completions + audio 参数） ============
     // 三种模型的请求体不同：
     // - mimo-v2.5-tts        ：audio.voice = 预置音色名；user 消息 = 可选风格指令
     // - mimo-v2.5-tts-voicedesign：音色描述放 user 消息，audio.optimize_text_preview=true，无 voice
     // - mimo-v2.5-tts-voiceclone ：audio.voice = 参考音频 base64 data URI
-    private fun mimo(ai: TtsAiConfig, req: TtsRequest, sink: PcmSink) {
+    private suspend fun mimo(ai: TtsAiConfig, req: TtsRequest, sink: PcmSink) {
         val base = ai.endpoint.ifBlank { "https://api.xiaomimimo.com/v1" }.trimEnd('/')
         val url = if (base.endsWith("/chat/completions")) base else "$base/chat/completions"
         val format = ai.format.ifBlank { "wav" }
@@ -447,7 +451,7 @@ class AiTtsSynthesizer @Inject constructor(
     }
 
     // ============ HTTP ============
-    private fun httpPost(urlStr: String, headers: Map<String, String>, body: ByteArray): ByteArray {
+    private suspend fun httpPost(urlStr: String, headers: Map<String, String>, body: ByteArray): ByteArray {
         val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 15_000
@@ -455,37 +459,50 @@ class AiTtsSynthesizer @Inject constructor(
             doOutput = true
             headers.forEach { (k, v) -> setRequestProperty(k, v) }
         }
-        try {
-            conn.outputStream.use { it.write(body) }
-            val code = conn.responseCode
-            if (code !in 200..299) {
-                val err = runCatching { conn.errorStream?.let { readAll(it) }?.toString(Charsets.UTF_8) }.getOrNull()
-                error("HTTP $code ${err.orEmpty().take(300)}")
-            }
-            return conn.inputStream.use { readAll(it) }
-        } finally {
-            conn.disconnect()
-        }
+        return exchange(conn) { it.outputStream.use { out -> out.write(body) } }
     }
 
-    private fun httpGet(urlStr: String, headers: Map<String, String>): ByteArray {
+    private suspend fun httpGet(urlStr: String, headers: Map<String, String>): ByteArray {
         val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 15_000
             readTimeout = 30_000
             headers.forEach { (k, v) -> setRequestProperty(k, v) }
         }
-        try {
-            val code = conn.responseCode
-            if (code !in 200..299) {
-                val err = runCatching { conn.errorStream?.let { readAll(it) }?.toString(Charsets.UTF_8) }.getOrNull()
-                error("HTTP $code ${err.orEmpty().take(300)}")
-            }
-            return conn.inputStream.use { readAll(it) }
-        } finally {
-            conn.disconnect()
-        }
+        return exchange(conn) {}
     }
+
+    /**
+     * 执行一次阻塞 HTTP 交换，并让它真正可取消：协程被取消（超时 / 重新生成）时由旁路协程
+     * 断开连接，阻塞中的读写随即抛异常退出，而不是把整段音频下载完、白耗流量和额度。
+     * 响应体有上限，异常大的响应不会把进程内存撑爆。
+     */
+    private suspend fun exchange(conn: HttpURLConnection, send: (HttpURLConnection) -> Unit): ByteArray =
+        coroutineScope {
+            val watchdog = launch {
+                try { awaitCancellation() } finally { conn.disconnect() }
+            }
+            try {
+                send(conn)
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    val err = runCatching {
+                        conn.errorStream?.let { readAll(it, MAX_ERROR_BYTES) }?.toString(Charsets.UTF_8)
+                    }.getOrNull()
+                    error("HTTP $code ${err.orEmpty().take(300)}")
+                }
+                val declared = conn.contentLengthLong
+                if (declared > MAX_RESPONSE_BYTES) error("响应过大（${declared / 1024 / 1024} MB），已放弃")
+                conn.inputStream.use { readAll(it, MAX_RESPONSE_BYTES) }
+            } catch (e: java.io.IOException) {
+                // 被取消导致的断连按取消处理，不当成网络错误去重试或上报。
+                currentCoroutineContext().ensureActive()
+                throw e
+            } finally {
+                watchdog.cancel()
+                conn.disconnect()
+            }
+        }
 
     private companion object {
         /** Fish model 头可选值，第一个为默认（免费版 S2.1 Pro）。 */
@@ -495,14 +512,21 @@ class AiTtsSynthesizer @Inject constructor(
         const val FISH_TEMPERATURE = 0.7
         /** 自动标签 LLM 温度：取低值，标签与措辞更稳定、少改写。 */
         const val LLM_TEMPERATURE = 0.2
+
+        /** 单次响应上限。24kHz 16bit 单声道约 22 分钟，Gemini 的 base64 JSON 也留足余量。 */
+        const val MAX_RESPONSE_BYTES = 64L * 1024 * 1024
+        const val MAX_ERROR_BYTES = 64L * 1024
     }
 
-    private fun readAll(input: InputStream): ByteArray {
+    private fun readAll(input: InputStream, limit: Long): ByteArray {
         val buf = ByteArrayOutputStream()
         val tmp = ByteArray(8192)
+        var total = 0L
         while (true) {
             val n = input.read(tmp)
             if (n < 0) break
+            total += n
+            if (total > limit) error("响应超过 ${limit / 1024 / 1024} MB 上限，已放弃")
             buf.write(tmp, 0, n)
         }
         return buf.toByteArray()

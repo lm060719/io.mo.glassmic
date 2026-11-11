@@ -2,6 +2,8 @@ package io.mo.glassmic.audio
 
 import android.content.Context
 import android.os.ParcelFileDescriptor
+import android.os.PowerManager
+import android.os.SystemClock
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.mo.glassmic.core.model.PlaybackPolicy
 import io.mo.glassmic.core.model.SourceType
@@ -13,6 +15,7 @@ import io.mo.glassmic.proto.PlaybackPolicy as ProtoPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -26,6 +29,7 @@ import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.util.ArrayDeque
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 import org.json.JSONArray
 import org.json.JSONObject
@@ -41,6 +45,9 @@ import kotlin.random.Random
  * Publisher 把同一份 PCM 流广播给所有 consumer，共享播放进度（需求 §10.6）。
  *
  * 一个解码线程 + N 个独立写出协程，避免单个慢 consumer 阻塞全局广播。
+ *
+ * 广播循环跑在专用的 URGENT_AUDIO 线程上（见 [broadcastDispatcher]）；没有 consumer 时
+ * 循环挂起等待，不空转，也不持有 WakeLock。
  */
 @Singleton
 class SharedPcmPublisher @Inject constructor(
@@ -103,6 +110,33 @@ class SharedPcmPublisher @Inject constructor(
     @Volatile private var lastBroadcastMs = 0L
     private val mutex = Mutex()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    // 换源与"读失败回退静音"必须串行，否则回退可能覆盖刚换上的新音源。
+    private val sourceLock = Any()
+
+    // 广播循环专用线程。在 Dispatchers.IO 上设线程优先级无效：每次 delay 后协程会换到
+    // 别的池线程，而被提权的那条池线程又会带着高优先级去跑无关 IO 任务。
+    // ScheduledExecutor 让 delay 也在这条线程上恢复。
+    private val broadcastDispatcher = Executors.newSingleThreadScheduledExecutor { task ->
+        Thread({
+            runCatching {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
+            }
+            task.run()
+        }, "GlassMic-Broadcast").apply { isDaemon = true }
+    }.asCoroutineDispatcher()
+
+    // 有 consumer 接入时唤醒挂起中的广播循环。CONFLATED：接入发生在检查与挂起之间也不会丢。
+    private val consumerAttached = Channel<Unit>(Channel.CONFLATED)
+
+    // 只在有 consumer（有 App 正在录音）时持有，避免空闲时阻止系统休眠。仅广播线程访问。
+    private val wakeLock: PowerManager.WakeLock? by lazy {
+        runCatching {
+            (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
+                .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "glassmic:audiopush")
+                .apply { setReferenceCounted(false) }
+        }.getOrNull()
+    }
+    private var wakeLockRenewedAt = 0L
 
     private companion object {
         // 当前所有路径都按 PCM_16 处理；后续如果接入 PCM_FLOAT / PCM_8 需要参数化
@@ -117,6 +151,12 @@ class SharedPcmPublisher @Inject constructor(
         const val PUBLISHER_EVENT_LIMIT = 160
         const val DROP_EVENT_INTERVAL_MS = 500L
         const val NEAR_SILENCE_RMS_PCM16 = 8.0
+        const val MIN_CONSUMER_SAMPLE_RATE = 8_000
+        const val MAX_CONSUMER_SAMPLE_RATE = 192_000
+        const val MAX_CONSUMER_CHANNELS = 2
+        // 非引用计数 WakeLock 重复 acquire 会刷新超时；录音期间定期续期，进程异常时最多多持有 10 分钟。
+        const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 1000L
+        const val WAKE_LOCK_RENEW_MS = 5 * 60 * 1000L
     }
 
     // 实时波形振幅点（0..1）。仅在有订阅者（波形悬浮窗打开）时计算并发送。
@@ -175,6 +215,9 @@ class SharedPcmPublisher @Inject constructor(
 
     /** 当前是否有注入进程在读 PCM（有 consumer = 有 App 正在"录音"）。 */
     val consumerCount: Int get() = consumers.size
+
+    /** 某个包当前挂着的 consumer 数，供 Provider 做上限控制。 */
+    fun consumerCountFor(pkg: String): Int = consumers.values.count { it.pkg == pkg }
 
     /** 当前音源是否是常驻内存的 PCM（TTS 生成结果）。内存回收时用来判断该缓冲能不能丢。 */
     val playingBufferedPcm: Boolean get() = currentSource is BufferedPcmSource
@@ -242,8 +285,8 @@ class SharedPcmPublisher @Inject constructor(
         val fos = FileOutputStream(writeFd.fileDescriptor)
         // ~320ms 抗调度抖动；溢出由 broadcast 显式处理并计数，不能静默丢片段。
         val queue = Channel<ByteArray>(capacity = queueCapacity)
-        val safeSampleRate = sampleRate.coerceAtLeast(8_000)
-        val safeChannels = channels.coerceAtLeast(1)
+        val safeSampleRate = sampleRate.coerceIn(MIN_CONSUMER_SAMPLE_RATE, MAX_CONSUMER_SAMPLE_RATE)
+        val safeChannels = channels.coerceIn(1, MAX_CONSUMER_CHANNELS)
         val consumer = Consumer(
             id = id,
             pkg = consumerPackage,
@@ -261,6 +304,7 @@ class SharedPcmPublisher @Inject constructor(
             )
         )
         consumers[id] = consumer
+        consumerAttached.trySend(Unit)
         startConsumerWriter(consumer)
         recordEvent(
             "consumer_attached",
@@ -281,16 +325,29 @@ class SharedPcmPublisher @Inject constructor(
         replaceSource(src, updateRuntime = true, groupId = groupId, audioId = audioId)
     }
 
+    /**
+     * 广播线程读 [failed] 出错时回退静音。只有它仍是当前音源才回退：读的若是刚被切走
+     * （正在/已经释放）的旧音源，失败属预期，不能把新音源顶掉，也不算引擎故障。
+     */
+    private fun fallbackToSilence(failed: AudioSourceProvider): Boolean = synchronized(sourceLock) {
+        if (currentSource !== failed || failed === SilenceSource) return false
+        replaceSource(SilenceSource, updateRuntime = true)
+        true
+    }
+
     private fun replaceSource(
         src: AudioSourceProvider,
         updateRuntime: Boolean,
         groupId: String? = null,
         audioId: String? = null
-    ) {
+    ): Unit = synchronized(sourceLock) {
         monitorPlayer.pauseAndFlush()
         flushConsumers()
-        currentSource.release()
+        // 先换引用再释放：广播循环下一轮直接读新音源；旧音源若正在解码，
+        // release 会等这一次 read 结束（FileAudioSource 内部与 read 共用一把锁）。
+        val previous = currentSource
         currentSource = src
+        if (previous !== src) previous.release()
         effectsEpoch.incrementAndGet()
         completed = false
         if (updateRuntime) {
@@ -320,10 +377,7 @@ class SharedPcmPublisher @Inject constructor(
             if (writerStarted) return
             writerStarted = true
         }
-        scope.launch {
-            runCatching {
-                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO)
-            }
+        scope.launch(broadcastDispatcher) {
             val frame = ByteBuffer.allocate(FRAME_CHUNK_BYTES)
             // 用纳秒高精度时钟维持实时节奏，预置 80ms 弹性缓冲垫（cushion），杜绝下游管道欠载
             var nextSendAtNanos = System.nanoTime() - 80_000_000L
@@ -331,10 +385,13 @@ class SharedPcmPublisher @Inject constructor(
                 if (consumers.isEmpty()) {
                     runtime.setStreaming(false)
                     monitorPlayer.pauseAndFlush()
-                    kotlinx.coroutines.delay(50)
-                    nextSendAtNanos = System.nanoTime() - 80_000_000L  // 没消费者时重置基准并保持缓冲水位
+                    holdWakeLock(false)
+                    // 无人录音时挂起，直到下一个 consumer 接入；不再每 50ms 空转唤醒。
+                    consumerAttached.receive()
+                    nextSendAtNanos = System.nanoTime() - 80_000_000L  // 重置基准并保持缓冲水位
                     continue
                 }
+                holdWakeLock(true)
                 runtime.setStreaming(!paused)
                 frame.clear()
                 val sr = MASTER_SAMPLE_RATE
@@ -352,13 +409,20 @@ class SharedPcmPublisher @Inject constructor(
                 }
 
                 val n = runCatching { readSource.read(frame, sr, ch) }.getOrElse {
-                    watchdog.onAudioEngineFailure()
-                    GlassLog.b("Publisher") { "read 失败: ${it.message}，降级静音" }
-                    setSource(SilenceSource)
+                    if (fallbackToSilence(readSource)) {
+                        watchdog.onAudioEngineFailure()
+                        GlassLog.b("Publisher") { "read 失败: ${it.message}，降级静音" }
+                    } else {
+                        GlassLog.b("Publisher") { "已切走的旧音源 read 失败，忽略: ${it.message}" }
+                    }
                     0
                 }
                 when {
                     n > 0 -> {
+                        // 真实音源读成功即清零故障计数，安全模式只针对"连续"失败。
+                        if (!paused && readSource === currentSource && readSource.type != SourceType.SILENCE) {
+                            watchdog.onAudioEngineHealthy()
+                        }
                         frame.flip()
                         if (!paused) runtime.setPosition(readSource.positionMs())
                         // 变速会改变实际广播的字节数——按广播出去的量节流，
@@ -386,6 +450,22 @@ class SharedPcmPublisher @Inject constructor(
                         kotlinx.coroutines.delay(2)
                     }
                 }
+            }
+        }
+    }
+
+    /** 仅广播线程调用。 */
+    private fun holdWakeLock(active: Boolean) {
+        val wl = wakeLock ?: return
+        runCatching {
+            if (active) {
+                val now = SystemClock.elapsedRealtime()
+                if (!wl.isHeld || now - wakeLockRenewedAt >= WAKE_LOCK_RENEW_MS) {
+                    wl.acquire(WAKE_LOCK_TIMEOUT_MS)
+                    wakeLockRenewedAt = now
+                }
+            } else if (wl.isHeld) {
+                wl.release()
             }
         }
     }

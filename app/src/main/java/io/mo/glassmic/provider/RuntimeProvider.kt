@@ -7,6 +7,9 @@ import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -20,8 +23,11 @@ import org.json.JSONObject
  * 给 Xposed 进程查询"针对某个调用方包名，应该用什么音源"。
  *
  * URI: content://io.mo.glassmic.provider.runtime/resolve
- * selectionArgs[0] = 调用方包名
+ * selectionArgs[0] = 调用方自报包名（仅作兜底；以 Binder 校验过的 callingPackage 为准）
  * 返回单行游标 (sourceType, groupId, audioId, globalSwitch)
+ *
+ * 安全：所有入口都以 [callerPackage]（AppOps 按调用方 UID 校验过的包名）为准，
+ * 自报的包名只在系统给不出 callingPackage 时兜底，防止任意 App 冒充别的包查决策或写诊断。
  *
  * Hilt 限制：不能直接 @AndroidEntryPoint。
  * 用 EntryPointAccessors 在 query 时按需解析依赖——这样无论 Provider.onCreate 是否
@@ -41,7 +47,7 @@ class RuntimeProvider : ContentProvider() {
         uri: Uri, projection: Array<out String>?, selection: String?,
         selectionArgs: Array<out String>?, sortOrder: String?
     ): Cursor {
-        val pkg = selectionArgs?.firstOrNull() ?: ""
+        val pkg = callerPackage(selectionArgs?.firstOrNull())
         val resolver = entryPoint().resolver()
         val src = resolver.resolve(pkg)
         // 查询只证明模块可以通信；空闲 native poller 也会查询，不能视为成功替换。
@@ -60,7 +66,7 @@ class RuntimeProvider : ContentProvider() {
                 val now = extras.getLong("time").takeIf { it > 0L } ?: System.currentTimeMillis()
                 val event = extras.getString("event").orEmpty().take(64)
                 if (event.isBlank()) return null
-                val pkg = extras.getString("package") ?: callingPackage ?: arg ?: "unknown"
+                val pkg = callerPackage(extras.getString("package") ?: arg)
                 if (event == "native_hooks_installed" || event == "native_hooks_failed") {
                     recordPackageState(pkg, "native_hook_installed_ms", now,
                         extras.getString("detail") ?: if (event == "native_hooks_failed") "none" else null)
@@ -109,7 +115,7 @@ class RuntimeProvider : ContentProvider() {
             }
             Constants.METHOD_PCM_READ_STATS -> {
                 if (extras == null) return null
-                val pkg = callingPackage ?: arg ?: "unknown"
+                val pkg = callerPackage(arg)
                 val prefs = context?.getSharedPreferences(Constants.AUDIO_STATS_PREFS, Context.MODE_PRIVATE)
                 synchronized(statsLock) {
                     val previous = runCatching {
@@ -139,7 +145,7 @@ class RuntimeProvider : ContentProvider() {
                 return Bundle().apply { putBoolean("ok", true) }
             }
             Constants.METHOD_XPOSED_PING -> {
-                val pkg = extras?.getString("package") ?: arg ?: callingPackage ?: "unknown"
+                val pkg = callerPackage(extras?.getString("package") ?: arg)
                 val now = extras?.getLong("time")?.takeIf { it > 0L } ?: System.currentTimeMillis()
                 val prefs = context?.getSharedPreferences(Constants.XPOSED_STATUS_PREFS, Context.MODE_PRIVATE)
                 val api = extras?.getInt("api") ?: 101
@@ -152,31 +158,19 @@ class RuntimeProvider : ContentProvider() {
                 return Bundle().apply { putBoolean("ok", true) }
             }
             Constants.METHOD_AUDIO_INTERCEPT -> {
-                val pkg = extras?.getString("package") ?: arg ?: callingPackage ?: "unknown"
+                val pkg = callerPackage(extras?.getString("package") ?: arg)
                 val now = extras?.getLong("time")?.takeIf { it > 0L } ?: System.currentTimeMillis()
                 val deltaReads = extras?.getInt("delta_reads") ?: 0
                 val deltaBytes = extras?.getLong("delta_bytes") ?: 0L
                 val sampleRate = extras?.getInt("sample_rate") ?: 0
                 val channels = extras?.getInt("channels") ?: 0
-                val prefs = context?.getSharedPreferences(Constants.AUDIO_STATS_PREFS, Context.MODE_PRIVATE)
                 if (deltaReads > 0) recordPackageState(pkg, "last_intercept_ms", now)
-                // Binder 可并发上报；累计计数与 native 快照必须一起更新。
-                synchronized(statsLock) {
-                    val oldReads = prefs?.getLong(Constants.AUDIO_STATS_TOTAL_READS, 0L) ?: 0L
-                    val oldBytes = prefs?.getLong(Constants.AUDIO_STATS_TOTAL_BYTES, 0L) ?: 0L
-                    val editor = prefs?.edit()
-                        ?.putLong(Constants.AUDIO_STATS_TOTAL_READS, oldReads + deltaReads)
-                        ?.putLong(Constants.AUDIO_STATS_TOTAL_BYTES, oldBytes + deltaBytes)
-                        ?.putLong(Constants.AUDIO_STATS_LAST_INTERCEPT, now)
-                        ?.putString(Constants.AUDIO_STATS_LAST_PACKAGE, pkg)
-                        ?.putInt(Constants.AUDIO_STATS_LAST_SAMPLE_RATE, sampleRate)
-                        ?.putInt(Constants.AUDIO_STATS_LAST_CHANNELS, channels)
+                // native 轮询录音期间每 80ms 上报一次。累计值先放内存，最多每秒落一次盘——
+                // 每次都 apply() 会把整个 prefs 文件（含 160 条时间线 JSON）重写一遍。
+                val flushNow = synchronized(statsLock) {
+                    pendingIntercept.add(pkg, now, deltaReads, deltaBytes, sampleRate, channels)
                     extras?.getBundle("native_stats")?.let { native ->
-                        // 保留最近有欠载的窗口，暂停/随后正常读取不会抹掉故障证据。
-                        val previous = runCatching {
-                            JSONObject(prefs?.getString(Constants.AUDIO_STATS_NATIVE_DIAGNOSTICS, null) ?: "{}")
-                        }.getOrElse { JSONObject() }
-                        val window = JSONObject().apply {
+                        pendingIntercept.addNativeWindow(JSONObject().apply {
                             put("time", now)
                             put("package", pkg)
                             put("path", native.getString("path") ?: "unknown")
@@ -190,23 +184,101 @@ class RuntimeProvider : ContentProvider() {
                             put("skipped_source_frames", native.getLong("skipped_source_frames"))
                             put("native_capture_age_ms", native.getLong("native_capture_age_ms", -1L))
                             put("pcm_fd_active", native.getBoolean("pcm_fd_active", false))
-                        }
-                        val lastUnderrun = if (native.getLong("underrun_reads") > 0) window
-                            else previous.optJSONObject("last_underrun")
-                        val lastOverrun = if (native.getLong("skipped_source_frames") > 0) window
-                            else previous.optJSONObject("last_overrun")
-                        editor?.putString(Constants.AUDIO_STATS_NATIVE_DIAGNOSTICS, JSONObject().apply {
-                            put("latest", window)
-                            if (lastUnderrun != null) put("last_underrun", lastUnderrun)
-                            if (lastOverrun != null) put("last_overrun", lastOverrun)
-                        }.toString())
+                        }, underrun = native.getLong("underrun_reads") > 0,
+                            overrun = native.getLong("skipped_source_frames") > 0)
                     }
-                    editor?.apply()
+                    SystemClock.uptimeMillis() - lastStatsFlushAt >= STATS_FLUSH_INTERVAL_MS
                 }
+                if (flushNow) flushInterceptStats() else scheduleInterceptFlush()
                 return Bundle().apply { putBoolean("ok", true) }
             }
         }
         return super.call(method, arg, extras)
+    }
+
+    /** Binder 校验过的调用方包名优先；系统给不出时才用自报值。 */
+    private fun callerPackage(claimed: String?): String {
+        // 包名与调用方 UID 对不上时 getCallingPackage 抛 SecurityException——这正是冒充，
+        // 不能退回自报值。
+        val verified = try { callingPackage } catch (_: SecurityException) { return "unknown" }
+        val safeClaimed = claimed?.takeIf { it.isNotBlank() }?.take(MAX_PACKAGE_LENGTH)
+        // 本进程自己的诊断工具可以代查任意包。
+        if (verified != null && verified == context?.packageName) return safeClaimed ?: verified
+        return verified ?: safeClaimed ?: "unknown"
+    }
+
+    private fun scheduleInterceptFlush() {
+        synchronized(statsLock) {
+            if (flushScheduled) return
+            flushScheduled = true
+        }
+        // 录音停止后不会再有上报，必须有一次延迟落盘把最后一段累计值写进去。
+        flushHandler.postDelayed({ flushInterceptStats() }, STATS_FLUSH_INTERVAL_MS)
+    }
+
+    private fun flushInterceptStats() {
+        val prefs = context?.getSharedPreferences(Constants.AUDIO_STATS_PREFS, Context.MODE_PRIVATE)
+            ?: return
+        synchronized(statsLock) {
+            flushScheduled = false
+            lastStatsFlushAt = SystemClock.uptimeMillis()
+            val pending = pendingIntercept
+            if (pending.isEmpty()) return
+            pendingIntercept = PendingIntercept()
+            val editor = prefs.edit()
+                .putLong(Constants.AUDIO_STATS_TOTAL_READS,
+                    prefs.getLong(Constants.AUDIO_STATS_TOTAL_READS, 0L) + pending.reads)
+                .putLong(Constants.AUDIO_STATS_TOTAL_BYTES,
+                    prefs.getLong(Constants.AUDIO_STATS_TOTAL_BYTES, 0L) + pending.bytes)
+                .putLong(Constants.AUDIO_STATS_LAST_INTERCEPT, pending.lastTime)
+                .putString(Constants.AUDIO_STATS_LAST_PACKAGE, pending.lastPackage)
+                .putInt(Constants.AUDIO_STATS_LAST_SAMPLE_RATE, pending.lastSampleRate)
+                .putInt(Constants.AUDIO_STATS_LAST_CHANNELS, pending.lastChannels)
+            pending.latestNative?.let { latest ->
+                // 保留最近有欠载/溢出的窗口，暂停或随后正常读取不会抹掉故障证据。
+                val previous = runCatching {
+                    JSONObject(prefs.getString(Constants.AUDIO_STATS_NATIVE_DIAGNOSTICS, null) ?: "{}")
+                }.getOrElse { JSONObject() }
+                val lastUnderrun = pending.lastUnderrun ?: previous.optJSONObject("last_underrun")
+                val lastOverrun = pending.lastOverrun ?: previous.optJSONObject("last_overrun")
+                editor.putString(Constants.AUDIO_STATS_NATIVE_DIAGNOSTICS, JSONObject().apply {
+                    put("latest", latest)
+                    if (lastUnderrun != null) put("last_underrun", lastUnderrun)
+                    if (lastOverrun != null) put("last_overrun", lastOverrun)
+                }.toString())
+            }
+            editor.apply()
+        }
+    }
+
+    /** 两次落盘之间累计的拦截统计。只在 [statsLock] 内访问。 */
+    private class PendingIntercept {
+        var reads = 0L
+        var bytes = 0L
+        var lastTime = 0L
+        var lastPackage: String? = null
+        var lastSampleRate = 0
+        var lastChannels = 0
+        var latestNative: JSONObject? = null
+        var lastUnderrun: JSONObject? = null
+        var lastOverrun: JSONObject? = null
+
+        fun isEmpty() = lastPackage == null
+
+        fun add(pkg: String, now: Long, deltaReads: Int, deltaBytes: Long, sampleRate: Int, channels: Int) {
+            reads += deltaReads
+            bytes += deltaBytes
+            lastTime = now
+            lastPackage = pkg
+            lastSampleRate = sampleRate
+            lastChannels = channels
+        }
+
+        fun addNativeWindow(window: JSONObject, underrun: Boolean, overrun: Boolean) {
+            latestNative = window
+            if (underrun) lastUnderrun = window
+            if (overrun) lastOverrun = window
+        }
     }
 
     /** 按包保留查询、安装、录音活动与实际替换证据，字段分别更新，不推导不存在的阶段。 */
@@ -268,6 +340,12 @@ class RuntimeProvider : ContentProvider() {
 
     private companion object {
         private val statsLock = Any()
+        private val flushHandler by lazy { Handler(Looper.getMainLooper()) }
+        private var pendingIntercept = PendingIntercept()
+        private var lastStatsFlushAt = 0L
+        private var flushScheduled = false
+        private const val STATS_FLUSH_INTERVAL_MS = 1_000L
+        private const val MAX_PACKAGE_LENGTH = 256
         private val lastPackageWrites = LinkedHashMap<Pair<String, String>, Pair<Long, String?>>()
         @Volatile private var lastPingWrite = 0L
         private const val PING_WRITE_THROTTLE_MS = 3000L

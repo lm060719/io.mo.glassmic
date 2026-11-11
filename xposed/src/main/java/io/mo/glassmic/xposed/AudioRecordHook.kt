@@ -7,7 +7,6 @@ import android.util.Log
 import io.github.libxposed.api.XposedInterface
 import io.mo.glassmic.core.audio.ComfortNoise
 import io.mo.glassmic.core.model.SourceType
-import java.lang.reflect.Method
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.WeakHashMap
@@ -15,7 +14,10 @@ import java.util.WeakHashMap
 /**
  * 拦截 AudioRecord 的全部 read() 重载，把读到的数据替换成虚拟音源。
  *
- * 注：NDK AAudio 路径（AAudioStream_read）需要 native hook，留给后续版本。
+ * API 101 与 legacy API 82 两个入口共用这一份实现（经 [MethodHooker] 适配），
+ * 由 [XposedHookGate.tryMarkAudioHookInstalled] 保证同一进程只装一次。
+ *
+ * NDK 侧的 AAudio / OpenSL ES / AudioRecord::read 路径由 [NativeAAudioHook]（glass_aaudio.cpp）覆盖。
  */
 object AudioRecordHook {
 
@@ -29,110 +31,55 @@ object AudioRecordHook {
         XBridge.recordInterception(ctx, pkg, bytes, sampleRate, channels)
     }
 
-    private sealed interface HookDecision {
-        data object Proceed : HookDecision
-        data class Replace(val value: Any?) : HookDecision
-    }
+    /** libxposed API 101 入口。 */
+    fun install(api: XposedInterface, appCtx: Context, callerPkg: String) =
+        install(ModernHooker(api, TAG), appCtx, callerPkg)
 
-    fun install(api: XposedInterface, appCtx: Context, callerPkg: String) {
+    /** legacy API 82 入口。 */
+    fun installLegacy(appCtx: Context, callerPkg: String) =
+        install(LegacyHooker(TAG), appCtx, callerPkg)
+
+    private fun install(hooker: MethodHooker, appCtx: Context, callerPkg: String) {
         if (installed) return
         synchronized(this) {
             if (installed) return
             if (!XposedHookGate.tryMarkAudioHookInstalled()) {
                 installed = true
-                api.log(Log.INFO, TAG, "skip duplicate API 101 hook in $callerPkg")
+                hooker.log(Log.INFO, "skip duplicate audio hook in $callerPkg")
                 return
             }
             installed = true
         }
+        val hookMethod = { method: java.lang.reflect.Method?, handler: (Context, String, HookCall) -> HookDecision ->
+            if (method != null) hooker.hook(method) { call -> handler(appCtx, callerPkg, call) }
+        }
 
-        hookMethod(
-            api, appCtx, callerPkg,
-            findMethod(AudioRecord::class.java, "read", ByteArray::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!),
-            ::handleByteArray
-        )
-        hookMethod(
-            api, appCtx, callerPkg,
-            findMethod(AudioRecord::class.java, "read", ByteArray::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!),
-            ::handleByteArray
-        )
+        hookMethod(findMethod(AudioRecord::class.java, "read", ByteArray::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!), ::handleByteArray)
+        hookMethod(findMethod(AudioRecord::class.java, "read", ByteArray::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!), ::handleByteArray)
 
-        hookMethod(
-            api, appCtx, callerPkg,
-            findMethod(AudioRecord::class.java, "read", ShortArray::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!),
-            ::handleShortArray
-        )
-        hookMethod(
-            api, appCtx, callerPkg,
-            findMethod(AudioRecord::class.java, "read", ShortArray::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!),
-            ::handleShortArray
-        )
+        hookMethod(findMethod(AudioRecord::class.java, "read", ShortArray::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!), ::handleShortArray)
+        hookMethod(findMethod(AudioRecord::class.java, "read", ShortArray::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!), ::handleShortArray)
 
-        hookMethod(
-            api, appCtx, callerPkg,
-            findMethod(AudioRecord::class.java, "read", FloatArray::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!),
-            ::handleFloatArray
-        )
+        hookMethod(findMethod(AudioRecord::class.java, "read", FloatArray::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!), ::handleFloatArray)
 
-        hookMethod(
-            api, appCtx, callerPkg,
-            findMethod(AudioRecord::class.java, "read", ByteBuffer::class.java, Int::class.javaPrimitiveType!!),
-            ::handleByteBuffer
-        )
-        hookMethod(
-            api, appCtx, callerPkg,
-            findMethod(AudioRecord::class.java, "read", ByteBuffer::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!),
-            ::handleByteBuffer
-        )
+        hookMethod(findMethod(AudioRecord::class.java, "read", ByteBuffer::class.java, Int::class.javaPrimitiveType!!), ::handleByteBuffer)
+        hookMethod(findMethod(AudioRecord::class.java, "read", ByteBuffer::class.java, Int::class.javaPrimitiveType!!, Int::class.javaPrimitiveType!!), ::handleByteBuffer)
 
-        hookMethod(
-            api, appCtx, callerPkg,
-            findMethod(AudioRecord::class.java, "release"),
-            ::handleRelease
-        )
+        hookMethod(findMethod(AudioRecord::class.java, "release"), ::handleRelease)
 
-        api.log(Log.INFO, TAG, "installed in $callerPkg")
+        hooker.log(Log.INFO, "installed in $callerPkg")
     }
 
-    private fun findMethod(cls: Class<*>, name: String, vararg paramTypes: Class<*>?): Method? =
-        runCatching { cls.getMethod(name, *paramTypes) }
-            .recoverCatching { cls.getDeclaredMethod(name, *paramTypes) }
-            .getOrNull()
-
-    private fun hookMethod(
-        api: XposedInterface,
-        appCtx: Context,
-        callerPkg: String,
-        method: Method?,
-        handler: (Context, String, XposedInterface.Chain) -> HookDecision
-    ) {
-        method ?: return
-        api.hook(method)
-            .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
-            .intercept { chain ->
-                val decision = try {
-                    handler(appCtx, callerPkg, chain)
-                } catch (t: Throwable) {
-                    api.log(Log.WARN, TAG, "hook error: ${t.message}", t)
-                    HookDecision.Proceed
-                }
-                when (decision) {
-                    HookDecision.Proceed -> chain.proceed()
-                    is HookDecision.Replace -> decision.value
-                }
-            }
-    }
-
-    private fun handleByteArray(appCtx: Context, pkg: String, chain: XposedInterface.Chain): HookDecision {
+    private fun handleByteArray(appCtx: Context, pkg: String, chain: HookCall): HookDecision {
         val src = XBridge.resolveSource(appCtx, pkg)
         if (src == SourceType.REAL_MIC) return HookDecision.Proceed
 
-        val buf = chain.getArg(0) as ByteArray
-        val offset = chain.getArg(1) as Int
-        val size = chain.getArg(2) as Int
+        val buf = chain.arg(0) as ByteArray
+        val offset = chain.arg(1) as Int
+        val size = chain.arg(2) as Int
         if (!validRange(buf.size, offset, size)) return HookDecision.Proceed
 
-        val record = chain.getThisObject() as AudioRecord
+        val record = chain.thisObject as AudioRecord
         if (src == SourceType.SILENCE) {
             // 注入舒适噪声而非纯 0，避免下游 App 把静音判定为"无输入"而中断录音
             val isFloat = record.audioFormat == AudioFormat.ENCODING_PCM_FLOAT
@@ -156,16 +103,16 @@ object AudioRecordHook {
         return HookDecision.Replace(size)
     }
 
-    private fun handleShortArray(appCtx: Context, pkg: String, chain: XposedInterface.Chain): HookDecision {
+    private fun handleShortArray(appCtx: Context, pkg: String, chain: HookCall): HookDecision {
         val src = XBridge.resolveSource(appCtx, pkg)
         if (src == SourceType.REAL_MIC) return HookDecision.Proceed
 
-        val buf = chain.getArg(0) as ShortArray
-        val offset = chain.getArg(1) as Int
-        val sizeInShorts = chain.getArg(2) as Int
+        val buf = chain.arg(0) as ShortArray
+        val offset = chain.arg(1) as Int
+        val sizeInShorts = chain.arg(2) as Int
         if (!validRange(buf.size, offset, sizeInShorts)) return HookDecision.Proceed
 
-        val record = chain.getThisObject() as AudioRecord
+        val record = chain.thisObject as AudioRecord
         if (src == SourceType.SILENCE) {
             ComfortNoise.fillShorts(buf, offset, sizeInShorts)
             paceSilence(sizeInShorts / record.channelCount.coerceAtLeast(1), record.sampleRate)
@@ -187,16 +134,16 @@ object AudioRecordHook {
         return HookDecision.Replace(sizeInShorts)
     }
 
-    private fun handleFloatArray(appCtx: Context, pkg: String, chain: XposedInterface.Chain): HookDecision {
+    private fun handleFloatArray(appCtx: Context, pkg: String, chain: HookCall): HookDecision {
         val src = XBridge.resolveSource(appCtx, pkg)
         if (src == SourceType.REAL_MIC) return HookDecision.Proceed
 
-        val buf = chain.getArg(0) as FloatArray
-        val offset = chain.getArg(1) as Int
-        val sizeInFloats = chain.getArg(2) as Int
+        val buf = chain.arg(0) as FloatArray
+        val offset = chain.arg(1) as Int
+        val sizeInFloats = chain.arg(2) as Int
         if (!validRange(buf.size, offset, sizeInFloats)) return HookDecision.Proceed
 
-        val record = chain.getThisObject() as AudioRecord
+        val record = chain.thisObject as AudioRecord
         if (src == SourceType.SILENCE) {
             ComfortNoise.fillFloats(buf, offset, sizeInFloats)
             paceSilence(sizeInFloats / record.channelCount.coerceAtLeast(1), record.sampleRate)
@@ -218,15 +165,15 @@ object AudioRecordHook {
         return HookDecision.Replace(sizeInFloats)
     }
 
-    private fun handleByteBuffer(appCtx: Context, pkg: String, chain: XposedInterface.Chain): HookDecision {
+    private fun handleByteBuffer(appCtx: Context, pkg: String, chain: HookCall): HookDecision {
         val src = XBridge.resolveSource(appCtx, pkg)
         if (src == SourceType.REAL_MIC) return HookDecision.Proceed
 
-        val buf = chain.getArg(0) as ByteBuffer
-        val size = chain.getArg(1) as Int
+        val buf = chain.arg(0) as ByteBuffer
+        val size = chain.arg(1) as Int
         if (size < 0 || size > buf.remaining()) return HookDecision.Proceed
 
-        val record = chain.getThisObject() as AudioRecord
+        val record = chain.thisObject as AudioRecord
         val pos = buf.position()
         if (src == SourceType.SILENCE) {
             val isFloat = record.audioFormat == AudioFormat.ENCODING_PCM_FLOAT
@@ -257,8 +204,8 @@ object AudioRecordHook {
         return HookDecision.Replace(size)
     }
 
-    private fun handleRelease(appCtx: Context, pkg: String, chain: XposedInterface.Chain): HookDecision {
-        val record = chain.getThisObject() as AudioRecord
+    private fun handleRelease(appCtx: Context, pkg: String, chain: HookCall): HookDecision {
+        val record = chain.thisObject as AudioRecord
         synchronized(readers) {
             readers.remove(record)?.release()
         }

@@ -1,0 +1,29 @@
+version: 2
+updates:
+  # Gradle 依赖（版本集中在 gradle/libs.versions.toml）。按周汇总成一个 PR，避免刷屏。
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      androidx:
+        patterns: ["androidx.*"]
+      kotlin-and-build:
+        patterns:
+          - "org.jetbrains.kotlin*"
+          - "com.google.devtools.ksp*"
+          - "com.android.*"
+      everything-else:
+        patterns: ["*"]
+    ignore:
+      # Xposed API 与 shadowhook 与目标框架强绑定，升级需人工评估。
+      - dependency-name: "io.github.libxposed:*"
+      - dependency-name: "de.robv.android.xposed:*"
+      - dependency-name: "com.bytedance.android:shadowhook"
+
+  # 工作流里的 action 已固定到提交 SHA，由 Dependabot 提示更新。
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

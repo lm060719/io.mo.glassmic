@@ -8,6 +8,7 @@ import android.os.SystemClock
 import io.mo.glassmic.core.Constants
 import java.io.FileInputStream
 import java.io.InputStream
+import java.io.InterruptedIOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.concurrent.atomic.AtomicReference
@@ -77,6 +78,8 @@ class XposedPcmReader(
                 totalWritten += n
                 remaining -= n
             }
+        } catch (e: InterruptedIOException) {
+            return onInterrupted(size, totalWritten)
         } catch (t: Throwable) {
             readFailurePending = true
             XBridge.reportProviderFailure(context.packageName, "pcm.read", t.javaClass.simpleName)
@@ -87,6 +90,17 @@ class XposedPcmReader(
         }
         recordRead(size, totalWritten)
         return totalWritten
+    }
+
+    /**
+     * 目标 App 停止录音时常会中断自己的读取线程。这不是 Provider 故障：pipe 仍然有效，
+     * 不上报、不关流（关流会让下一次 read 重开一个多余的 consumer），也不返回 -1
+     * （-1 会让 Hook 放行到真实麦克风）。恢复中断标志，交还已读到的部分，其余由调用方补零。
+     */
+    private fun onInterrupted(size: Int, done: Int): Int {
+        Thread.currentThread().interrupt()
+        recordRead(size, done)
+        return done
     }
 
     fun read(out: ByteArray, offset: Int, size: Int): Int {
@@ -101,6 +115,8 @@ class XposedPcmReader(
             }
             recordRead(size, totalRead)
             totalRead
+        } catch (e: InterruptedIOException) {
+            onInterrupted(size, totalRead)
         } catch (t: Throwable) {
             readFailurePending = true
             XBridge.reportProviderFailure(context.packageName, "pcm.read", t.javaClass.simpleName)

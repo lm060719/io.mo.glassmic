@@ -20,7 +20,9 @@ import kotlin.concurrent.thread
  *      a) ShadowHook.init（加载 libshadowhook.so）
  *      b) System.loadLibrary("glassmic_native")
  *      c) nativeInstall 安装 AAudioStream_read / callback 等 hook
- *      d) 启动 80ms 轮询线程：同步决策、读取 native 统计，并只在真实录音活跃时维护 PCM pipe
+ *      d) 启动轮询线程：同步决策、读取 native 统计，并只在真实录音活跃时维护 PCM pipe。
+ *         录音期间每 80ms 一轮；空闲时阻塞在 native 的 eventfd 上，录音回调一出现立即被唤醒，
+ *         最长 5s 醒一次做心跳——作用域内每个进程都有这条线程，空闲时不能频繁唤醒。
  *
  * 设计要点：
  * - audio thread 完全不调 Java，只读 native 端原子；避免 RT 线程跨 JNI/Binder 引发卡顿
@@ -31,6 +33,10 @@ object NativeAAudioHook {
 
     private const val TAG = "GlassMic-NativeAAudio"
     private const val POLL_INTERVAL_MS = 80L
+    // 空闲等待上限，与 SourceQueryPolicy 空闲 TTL 一致：心跳查询本来也是 5s 一次。
+    private const val IDLE_WAIT_MS = 5_000
+    // 录音停止后再保持 80ms 节奏一段时间，覆盖短暂停顿与 PCM fd 的关闭判定。
+    private const val IDLE_AFTER_CAPTURE_MS = 3_000L
     private const val PCM_OPEN_ACTIVITY_WINDOW_MS = 500L
     private const val PCM_CLOSE_IDLE_MS = 1_500L
     private const val TAP_RETRY_MS = 15_000L
@@ -214,6 +220,11 @@ object NativeAAudioHook {
                     // 旧逻辑仅凭 FILE 决策就打开 fd，会让王者等多进程应用产生长期空闲 consumer，
                     // Publisher 持续向没人读取的 pipe 写入并大量丢弃队列数据。
                     val needsPcm = src == SourceType.FILE || src == SourceType.TTS || src == SourceType.LIVE
+                    // GlassMic 侧关闭了写端（服务停止、consumer 被断开等）：native 已停止读取，
+                    // 这里同步关闭，之后如仍在录音会按重试间隔重新打开。
+                    if (hasPushedFd && !nativePcmFdAlive()) {
+                        closePcmFd(ctx, callerPackage, "provider closed pipe")
+                    }
                     when {
                         needsPcm && captureAgeMs <= PCM_OPEN_ACTIVITY_WINDOW_MS -> ensurePcmFd(ctx, callerPackage)
                         hasPushedFd && (!needsPcm || captureAgeMs > PCM_CLOSE_IDLE_MS) -> {
@@ -256,7 +267,17 @@ object NativeAAudioHook {
                 }
 
                 try {
-                    Thread.sleep(POLL_INTERVAL_MS)
+                    val sinceCapture = if (lastNativeCaptureAtMs > 0L) {
+                        SystemClock.uptimeMillis() - lastNativeCaptureAtMs
+                    } else {
+                        Long.MAX_VALUE
+                    }
+                    val idle = !hasPushedFd && !hasTapFd && sinceCapture > IDLE_AFTER_CAPTURE_MS
+                    if (idle) {
+                        nativeWaitCapture(IDLE_WAIT_MS)
+                    } else {
+                        Thread.sleep(POLL_INTERVAL_MS)
+                    }
                 } catch (_: InterruptedException) {
                     closePcmFd(ctx, callerPackage, "poller interrupted")
                     closeTapFd()
@@ -401,4 +422,6 @@ object NativeAAudioHook {
     @JvmStatic private external fun nativeDupFd(fd: java.io.FileDescriptor): Int
     @JvmStatic private external fun nativeSetTapFd(fd: Int)
     @JvmStatic private external fun nativeTapActive(): Boolean
+    @JvmStatic private external fun nativeWaitCapture(timeoutMs: Int): Boolean
+    @JvmStatic private external fun nativePcmFdAlive(): Boolean
 }

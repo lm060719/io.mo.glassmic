@@ -54,12 +54,25 @@ object AppConfigSerializer : Serializer<AppConfig> {
         )
         .build()
 
-    override suspend fun readFrom(input: InputStream): AppConfig =
-        try { AppConfig.parseFrom(input) }
+    override suspend fun readFrom(input: InputStream): AppConfig {
+        val stored = try { AppConfig.parseFrom(input) }
         catch (e: InvalidProtocolBufferException) {
             throw CorruptionException("AppConfig 损坏", e)
         }
+        return mapSecrets(stored, SecretCipher::decrypt)
+    }
 
+    // 凭据只在落盘这一层加密：内存里的 AppConfig 始终是明文，调用方无需感知。
     override suspend fun writeTo(t: AppConfig, output: OutputStream) =
-        t.writeTo(output)
+        mapSecrets(t, SecretCipher::encrypt).writeTo(output)
+
+    private fun mapSecrets(cfg: AppConfig, transform: (String) -> String): AppConfig {
+        val ai = cfg.tts.ai
+        if (ai.apiKey.isEmpty() && ai.llmApiKey.isEmpty()) return cfg
+        val mapped = ai.toBuilder()
+            .setApiKey(transform(ai.apiKey))
+            .setLlmApiKey(transform(ai.llmApiKey))
+            .build()
+        return cfg.toBuilder().setTts(cfg.tts.toBuilder().setAi(mapped)).build()
+    }
 }
