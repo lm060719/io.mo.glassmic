@@ -68,6 +68,16 @@ class LiveCaptureController @Inject constructor(
     private val mutableStatus = MutableStateFlow(LiveStatus())
     val status: StateFlow<LiveStatus> = mutableStatus.asStateFlow()
 
+    // 用户选好的音源 App。音频库页和悬浮窗共用，悬浮窗「开始实时」直接用它。
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val mutableSelected = MutableStateFlow(prefs.getString(KEY_PACKAGE, "").orEmpty())
+    val selectedPackage: StateFlow<String> = mutableSelected.asStateFlow()
+
+    fun selectPackage(packageName: String) {
+        mutableSelected.value = packageName
+        prefs.edit().putString(KEY_PACKAGE, packageName).apply()
+    }
+
     private var session: Session? = null // 仅在持有 mutex 时访问
 
     private class Session(
@@ -263,5 +273,8 @@ class LiveCaptureController @Inject constructor(
 
     private companion object {
         const val START_TIMEOUT_MS = 30_000L
+        // 沿用旧版音频库页的存储位置，升级后选择不丢
+        const val PREFS_NAME = "live_capture"
+        const val KEY_PACKAGE = "package"
     }
 }

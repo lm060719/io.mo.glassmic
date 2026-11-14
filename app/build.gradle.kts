@@ -16,8 +16,8 @@ android {
         applicationId = "io.mo.glassmic"
         minSdk = 29
         targetSdk = 35
-        versionCode = 30
-        versionName = "1.5.0"
+        versionCode = 32
+        versionName = "1.5.1"
         // 只打包中英文资源；resourceConfigurations 在 AGP 9 新 DSL 中已弃用，改用 localeFilters
         androidResources.localeFilters += listOf("zh-rCN", "en")
     }
@@ -75,7 +75,7 @@ ksp {
 // ============== Proto Lite ==============
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:3.25.5"
+        artifact = "com.google.protobuf:protoc:4.36.2"
     }
     generateProtoTasks {
         all().forEach { task ->
