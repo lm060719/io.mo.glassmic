@@ -114,6 +114,9 @@ enum class FloatMode { BALL, MINI_BAR, MENU, TTS, TTS_SETTINGS }
 data class FloatGroupItem(val id: String, val emoji: String, val name: String)
 data class FloatClipItem(val id: String, val name: String, val isCurrent: Boolean, val durationMs: Long = 0L)
 
+/** 实时应用音频快捷入口（issue #46）：在音频库页选好的音源 App 及当前抓取状态。 */
+data class FloatLiveItem(val packageName: String, val label: String, val running: Boolean, val starting: Boolean)
+
 /** 展开态面板的默认宽度（设计稿 390 宽屏幕左右各留 14）。窄屏按可用宽度收缩。 */
 const val EXPANDED_PANEL_WIDTH_DP = 340
 val EXPANDED_PANEL_WIDTH: Dp = EXPANDED_PANEL_WIDTH_DP.dp
@@ -184,6 +187,8 @@ fun FloatingBubbleRoot(
     onToggleFishEnhance: (Boolean) -> Unit = {},
     ttsProgressLines: List<String> = emptyList(),
     ttsEnhanced: TtsProgress.Enhanced? = null,
+    live: FloatLiveItem? = null,
+    onToggleLive: () -> Unit = {},
 ) {
     // 面板尺寸：拖动中实时变化，松手后经 onResizePanel 存进配置。
     // 对象只创建一次——拖动手势在 pointerInput(Unit) 里常驻，若配置一变就换新对象，
@@ -311,7 +316,9 @@ fun FloatingBubbleRoot(
                             clipsProvider = clipsProvider,
                             onSelectClip = onSelectClip,
                             playbackPolicy = playbackPolicy,
-                            onSetPlaybackPolicy = onSetPlaybackPolicy
+                            onSetPlaybackPolicy = onSetPlaybackPolicy,
+                            live = live,
+                            onToggleLive = onToggleLive
                         )
                     } else {
                         TtsTab(

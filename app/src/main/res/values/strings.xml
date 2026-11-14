@@ -104,6 +104,7 @@
     <string name="live_status_error">失败</string>
     <string name="live_need_service">请先在主页开启 GlassMic</string>
     <string name="live_start_failed">实时音频启动失败：%1$s</string>
+    <string name="live_pick_no_match">没有匹配的 App</string>
     <string name="home_policy_silence">静音</string>
     <string name="home_scope_whitelist_count">已启用 %1$d 个应用</string>
     <string name="scope_none_selected">未选择目标应用</string>
@@ -558,5 +559,7 @@
     <string name="ai_tts_fish_no_voices">没有找到声音</string>
     <string name="float_tts_clear">清空</string>
     <string name="float_show_controls">播放设置</string>
+    <string name="float_live_start">开始实时</string>
+    <string name="float_live_stop">停止</string>
     <string name="float_hide_controls">收起设置</string>
 </resources>

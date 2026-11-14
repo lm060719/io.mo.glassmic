@@ -4,10 +4,19 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.Velocity
+import io.mo.glassmic.ui.common.EmptyHint
+import io.mo.glassmic.ui.common.GlassSearchField
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -75,18 +84,25 @@ data class LiveSourceUiState(
 class LiveSourceViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val playback: PlaybackController,
-    liveCapture: LiveCaptureController,
+    private val liveCapture: LiveCaptureController,
     runtime: RuntimeStateHolder
 ) : ViewModel() {
-    private val prefs = context.getSharedPreferences("live_capture", Context.MODE_PRIVATE)
-    private val selected = MutableStateFlow(prefs.getString(KEY_PACKAGE, "").orEmpty())
     private val _apps = MutableStateFlow<List<LiveAppEntry>>(emptyList())
-    val apps: StateFlow<List<LiveAppEntry>> = _apps.asStateFlow()
+    private val _query = MutableStateFlow("")
+    val query: StateFlow<String> = _query.asStateFlow()
+
+    /** 选择面板里显示的应用：按名称或包名过滤（不区分大小写）。 */
+    val apps: StateFlow<List<LiveAppEntry>> = combine(_apps, _query) { list, q ->
+        val key = q.trim()
+        if (key.isEmpty()) list
+        else list.filter { it.label.contains(key, ignoreCase = true) || it.packageName.contains(key, ignoreCase = true) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     private val _notice = MutableStateFlow<String?>(null)
     val notice: StateFlow<String?> = _notice.asStateFlow()
 
     val state: StateFlow<LiveSourceUiState> = combine(
-        liveCapture.status, runtime.flow, selected
+        liveCapture.status, runtime.flow, liveCapture.selectedPackage
     ) { status, rt, pkg ->
         LiveSourceUiState(
             status = status,
@@ -97,8 +113,16 @@ class LiveSourceViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LiveSourceUiState())
 
+    /** 打开选择面板：清空上次的搜索词，首次打开时加载应用列表。 */
+    fun openPicker() {
+        _query.value = ""
+        loadApps()
+    }
+
+    fun setQuery(q: String) { _query.value = q }
+
     /** 可作为音源的应用：有桌面入口的应用（含系统音乐/视频 App），不含 GlassMic 自身。 */
-    fun loadApps() {
+    private fun loadApps() {
         if (_apps.value.isNotEmpty()) return
         viewModelScope.launch {
             _apps.value = withContext(Dispatchers.IO) {
@@ -115,13 +139,10 @@ class LiveSourceViewModel @Inject constructor(
         }
     }
 
-    fun select(pkg: String) {
-        selected.value = pkg
-        prefs.edit().putString(KEY_PACKAGE, pkg).apply()
-    }
+    fun select(pkg: String) = liveCapture.selectPackage(pkg)
 
     fun start() {
-        val pkg = selected.value.takeIf { it.isNotBlank() } ?: return
+        val pkg = liveCapture.selectedPackage.value.takeIf { it.isNotBlank() } ?: return
         viewModelScope.launch {
             playback.setLiveSource(pkg)?.let { error ->
                 _notice.value = context.getString(R.string.live_start_failed, error)
@@ -134,8 +155,15 @@ class LiveSourceViewModel @Inject constructor(
     }
 
     fun consumeNotice() { _notice.value = null }
+}
 
-    private companion object { const val KEY_PACKAGE = "package" }
+/**
+ * 吃掉列表滚到头之后剩下的滚动和惯性：不传给外层底部面板，
+ * 免得在列表顶部往下滑时把整个面板拖走、一甩就关掉。面板仍可拖顶部把手关闭。
+ */
+private object KeepScrollInList : NestedScrollConnection {
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset = available
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = available
 }
 
 @Composable
@@ -176,7 +204,7 @@ fun LiveSourceCard(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .clickable(enabled = !running && !starting) { vm.loadApps(); choosing = true }
+                .clickable(enabled = !running && !starting) { vm.openPicker(); choosing = true }
                 .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -217,31 +245,44 @@ fun LiveSourceCard(
 
     if (choosing) {
         val apps by vm.apps.collectAsState()
+        val query by vm.query.collectAsState()
         GlassSheet(
             title = stringResource(R.string.live_pick_app),
             meta = stringResource(R.string.live_pick_meta),
             onDismiss = { choosing = false }
         ) {
-            LazyColumn(
-                Modifier.fillMaxWidth().heightIn(max = 520.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
-                items(apps, key = { it.packageName }) { app ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable { vm.select(app.packageName); choosing = false }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+            GlassSearchField(
+                query, vm::setQuery, stringResource(R.string.scope_search_hint),
+                Modifier.padding(horizontal = 4.dp).padding(bottom = 8.dp),
+                onCard = false
+            )
+            // 固定高度：过滤时面板不跟着跳；屏幕不够高（如弹出键盘）时由 weight 收缩
+            Box(Modifier.fillMaxWidth().weight(1f, fill = false).height(520.dp)) {
+                if (apps.isEmpty()) {
+                    if (query.isNotBlank()) EmptyHint(stringResource(R.string.live_pick_no_match))
+                } else {
+                    LazyColumn(
+                        Modifier.fillMaxSize().nestedScroll(KeepScrollInList),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        AppIcon(app.packageName, size = 36.dp)
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            app.label, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            color = if (app.packageName == state.selectedPackage) t.primaryInk else t.ink,
-                            modifier = Modifier.weight(1f)
-                        )
+                        items(apps, key = { it.packageName }) { app ->
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable { vm.select(app.packageName); choosing = false }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                AppIcon(app.packageName, size = 36.dp)
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    app.label, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    color = if (app.packageName == state.selectedPackage) t.primaryInk else t.ink,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
                     }
                 }
             }
