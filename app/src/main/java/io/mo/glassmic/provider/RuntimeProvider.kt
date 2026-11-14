@@ -55,7 +55,7 @@ class RuntimeProvider : ContentProvider() {
         recordPing(pkg, selectionArgs?.getOrNull(1)?.toIntOrNull() ?: 0)
         val snap = resolver.configSnapshot()
         return MatrixCursor(arrayOf("source", "group_id", "audio_id", "global_switch"))
-            .apply { addRow(arrayOf(src.name, "", "", if (snap.globalSwitch) 1 else 0)) }
+            .apply { addRow(arrayOf<Any>(src.name, "", "", if (snap.globalSwitch) 1 else 0)) }
     }
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
