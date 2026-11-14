@@ -17,7 +17,7 @@ android {
         minSdk = 29
         targetSdk = 35
         versionCode = 33
-        versionName = "1.5.0"
+        versionName = "1.5.1"
         // 只打包中英文资源；resourceConfigurations 在 AGP 9 新 DSL 中已弃用，改用 localeFilters
         androidResources.localeFilters += listOf("zh-rCN", "en")
     }
