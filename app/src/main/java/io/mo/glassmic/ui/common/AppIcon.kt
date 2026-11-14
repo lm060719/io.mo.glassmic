@@ -24,9 +24,17 @@ import io.mo.glassmic.memory.MemoryReleasable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** 已解码的应用图标。按需加载、容量有限；纯界面缓存，任何内存压力下都整体丢弃。 */
+/**
+ * 已解码的应用图标。按需加载、按字节限容；纯界面缓存，任何内存压力下都整体丢弃。
+ * 容量要装得下几百个应用（平板常见）：按个数只留 128 个时，长列表来回滑会不停淘汰、
+ * 重新解码，图标反复闪占位块，慢速滑动时一顿一顿的（issue #46）。
+ */
 private object AppIconCache : MemoryReleasable {
-    private val cache = LruCache<String, ImageBitmap>(128)
+    // 40dp 图标在高密度屏上约 50KB；16MB 约可容 300+ 个，同时不超过堆上限的 1/8
+    private val maxBytes = minOf(16L * 1024 * 1024, Runtime.getRuntime().maxMemory() / 8).toInt()
+    private val cache = object : LruCache<String, ImageBitmap>(maxBytes) {
+        override fun sizeOf(key: String, value: ImageBitmap): Int = value.width * value.height * 4
+    }
 
     init {
         MemoryPressureBus.register(this)
@@ -39,7 +47,7 @@ private object AppIconCache : MemoryReleasable {
     }
 
     override fun onMemoryPressure(level: MemoryPressure): Long {
-        val freed = cache.snapshot().values.sumOf { it.width.toLong() * it.height * 4 }
+        val freed = cache.size().toLong()
         cache.evictAll()
         return freed
     }

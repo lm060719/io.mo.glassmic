@@ -104,6 +104,7 @@
     <string name="live_status_error">Failed</string>
     <string name="live_need_service">Turn on GlassMic on the home page first</string>
     <string name="live_start_failed">Live audio failed to start: %1$s</string>
+    <string name="live_pick_no_match">No matching app</string>
     <string name="home_policy_silence">Silence</string>
     <string name="home_scope_whitelist_count">%1$d apps enabled</string>
     <string name="scope_none_selected">No target apps</string>
@@ -558,5 +559,7 @@
     <string name="ai_tts_fish_no_voices">No voices found</string>
     <string name="float_tts_clear">Clear</string>
     <string name="float_show_controls">Controls</string>
+    <string name="float_live_start">Go live</string>
+    <string name="float_live_stop">Stop</string>
     <string name="float_hide_controls">Hide</string>
 </resources>

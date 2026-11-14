@@ -225,7 +225,7 @@ static double rms_16k_after_warmup(int16_t (*wave)(int)) {
 }
 
 static void anti_aliasing() {
-    constexpr double kPi = 3.14159265358979323846;
+    static constexpr double kPi = 3.14159265358979323846;
     // 20 kHz would alias to 4 kHz at full amplitude without the low-pass (stateful across 10 blocks).
     const double alias = rms_16k_after_warmup([](int f) {
         return static_cast<int16_t>(10000 * std::sin(2 * kPi * 20000.0 * f / 48000.0));
@@ -245,7 +245,7 @@ static void anti_aliasing() {
 }
 
 static void phase_continuity() {
-    constexpr double kPi = 3.14159265358979323846;
+    static constexpr double kPi = 3.14159265358979323846;
     // 48k -> 44.1k is not an integer ratio and 160 is not a multiple of 147 (the rate quantum):
     // reading ceil(160 * 48000 / 44100) = 175 source frames per callback used to drop ~0.85 frame
     // every block (a 0.5% speed-up plus a phase jump at each boundary).
