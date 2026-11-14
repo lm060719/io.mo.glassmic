@@ -3,9 +3,7 @@ package io.mo.glassmic.ui.scope
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,10 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -42,10 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -62,6 +55,7 @@ import io.mo.glassmic.ui.common.CheckCircle
 import io.mo.glassmic.ui.common.Dot
 import io.mo.glassmic.ui.common.GlassIconButton
 import io.mo.glassmic.ui.common.GlassPage
+import io.mo.glassmic.ui.common.GlassSearchField
 import io.mo.glassmic.ui.common.GlassToggle
 import io.mo.glassmic.ui.common.MonoFamily
 import io.mo.glassmic.ui.common.Segmented
@@ -158,7 +152,12 @@ fun ScopeScreen(
                 item { LsposedBanner(isBound = state.isLsposedServiceBound) }
             }
 
-            item { SearchField(state.query, vm::setQuery, Modifier.padding(bottom = 12.dp)) }
+            item {
+                GlassSearchField(
+                    state.query, vm::setQuery, stringResource(R.string.scope_search_hint),
+                    Modifier.padding(bottom = 12.dp)
+                )
+            }
 
             appList(
                 state = state,
@@ -202,46 +201,6 @@ private fun LsposedBanner(isBound: Boolean) {
                 },
                 background = t.bgSolid.copy(alpha = 0.6f),
                 textColor = t.warnInk
-            )
-        }
-    }
-}
-
-@Composable
-private fun SearchField(query: String, onQuery: (String) -> Unit, modifier: Modifier = Modifier) {
-    val t = glass
-    val shape = RoundedCornerShape(23.dp)
-    Row(
-        modifier
-            .fillMaxWidth()
-            .height(46.dp)
-            .clip(shape)
-            .frosted()
-            .background(t.card)
-            .border(BorderStroke(1.dp, t.border), shape)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(Icons.Rounded.Search, null, tint = t.ink.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
-        Spacer(Modifier.width(10.dp))
-        BasicTextField(
-            value = query,
-            onValueChange = onQuery,
-            singleLine = true,
-            textStyle = TextStyle(fontSize = 15.sp, color = t.ink),
-            cursorBrush = SolidColor(t.primary),
-            modifier = Modifier.weight(1f),
-            decorationBox = { inner ->
-                Box {
-                    if (query.isEmpty()) Text(stringResource(R.string.scope_search_hint), fontSize = 15.sp, color = t.ink3)
-                    inner()
-                }
-            }
-        )
-        if (query.isNotEmpty()) {
-            Icon(
-                Icons.Rounded.Close, null, tint = t.ink3,
-                modifier = Modifier.size(20.dp).clip(RoundedCornerShape(10.dp)).clickable { onQuery("") }
             )
         }
     }
