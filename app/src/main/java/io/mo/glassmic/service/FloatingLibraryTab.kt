@@ -123,6 +123,8 @@ internal fun ColumnScope.LibraryTab(
     onSelectClip: (String) -> Unit,
     playbackPolicy: PlaybackPolicy,
     onSetPlaybackPolicy: (PlaybackPolicy) -> Unit,
+    live: FloatLiveItem?,
+    onToggleLive: () -> Unit,
 ) {
     val t = glass
     var controlsExpanded by remember { mutableStateOf(false) }
@@ -202,6 +204,7 @@ internal fun ColumnScope.LibraryTab(
             if (controlsExpanded) {
                 item(key = "volume") { VolumeRow(gain = outputGain, onSetGain = onSetOutputGain) }
                 item(key = "policy") { policySelector() }
+                if (live != null) item(key = "live") { LiveRow(live, onToggleLive) }
             }
             if (groups.size > 1) item(key = "groups") { groupSelector() }
         }
@@ -237,6 +240,61 @@ internal fun ColumnScope.LibraryTab(
     }
     if (!compactLayout) {
         policySelector()
+        if (live != null) LiveRow(live, onToggleLive)
+    }
+}
+
+/**
+ * 实时应用音频快捷开关：一键把音源切到音频库页选好的 App，或停掉回到真实麦克风。
+ * 免得点过语音包后还要回主界面重新「开始实时输入」（issue #46）。
+ */
+@Composable
+private fun LiveRow(live: FloatLiveItem, onToggle: () -> Unit) {
+    val t = glass
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = LIBRARY_TOUCH_HEIGHT),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AppIcon(live.packageName, size = 26.dp)
+        Spacer(Modifier.width(COMPACT_PANEL_GAP))
+        Text(
+            stringResource(R.string.source_live, live.label),
+            fontSize = 13.sp,
+            fontWeight = if (live.running) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (live.running) t.ink else t.ink2,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.width(COMPACT_PANEL_GAP))
+        val enabled = !live.starting
+        Text(
+            stringResource(
+                when {
+                    live.starting -> R.string.live_status_starting
+                    live.running -> R.string.float_live_stop
+                    else -> R.string.float_live_start
+                }
+            ),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = when {
+                !enabled -> t.ink3
+                live.running -> t.err
+                else -> Color.White
+            },
+            maxLines = 1,
+            modifier = Modifier
+                .clip(RoundedCornerShape(14.dp))
+                .background(
+                    when {
+                        !enabled -> t.fill
+                        live.running -> t.err.copy(alpha = 0.14f)
+                        else -> t.primary
+                    }
+                )
+                .clickable(enabled = enabled, onClick = onToggle)
+                .padding(horizontal = 12.dp, vertical = 7.dp)
+        )
     }
 }
 

@@ -16,6 +16,9 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import android.widget.Toast
+import io.mo.glassmic.root.LivePhase
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -260,6 +263,12 @@ class FloatingWindowService : LifecycleService() {
                 val activeFile = (rt.currentSourceType == SourceType.FILE || rt.currentSourceType == SourceType.TTS ||
                     rt.currentSourceType == SourceType.LIVE) && rt.enabled && !rt.safeMode
                 val liveStatus by liveCapture.status.collectAsState()
+                val livePkg by liveCapture.selectedPackage.collectAsState()
+                val liveLabel = remember(livePkg) { if (livePkg.isBlank()) "" else appLabelOf(livePkg) }
+                val liveRunning = rt.currentSourceType == SourceType.LIVE && liveStatus.phase == LivePhase.ACTIVE
+                val live = livePkg.takeIf { it.isNotBlank() }?.let { pkg ->
+                    FloatLiveItem(pkg, liveLabel, liveRunning, liveStatus.phase == LivePhase.STARTING)
+                }
                 val currentId = cfg.currentAudioId
                 val currentName = if (rt.currentSourceType == SourceType.TTS) stringResource(R.string.source_tts)
                                   else if (rt.currentSourceType == SourceType.LIVE)
@@ -332,6 +341,8 @@ class FloatingWindowService : LifecycleService() {
                     onToggleFishEnhance = { on -> updateFishAi { it.fishAutoTag = on } },
                     ttsProgressLines = ttsProgressLines,
                     ttsEnhanced = ttsEnhanced,
+                    live = live,
+                    onToggleLive = { onToggleLive(liveRunning) },
                 )
             }
         }
@@ -350,6 +361,24 @@ class FloatingWindowService : LifecycleService() {
             configStore.update {
                 val cur = it.audioMonitor
                 it.setAudioMonitor(cur.toBuilder().setEnabled(!cur.enabled).build())
+            }
+        }
+    }
+
+    /** 悬浮窗里一键开始 / 停止实时应用音频；音源用音频库页选好的 App。停止即恢复真实麦克风，与主界面一致。 */
+    private fun onToggleLive(running: Boolean) {
+        lifecycleScope.launch {
+            if (running) {
+                playback.setRealMic()
+                return@launch
+            }
+            val pkg = liveCapture.selectedPackage.value.takeIf { it.isNotBlank() } ?: return@launch
+            playback.setLiveSource(pkg)?.let { error ->
+                Toast.makeText(
+                    this@FloatingWindowService,
+                    AppLocale.string(this@FloatingWindowService, R.string.live_start_failed, error),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }
