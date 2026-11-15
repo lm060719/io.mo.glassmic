@@ -27,9 +27,16 @@
     <string name="ksu_gain">伴奏增益 %1$s dB</string>
     <string name="ksu_speed">播放速度 %1$s×</string>
     <string name="ksu_switch_failed">未确认 KSU 已恢复真实麦克风，暂不切换后端。请先在模块 WebUI 恢复真麦，并重新连接后重试。</string>
-    <string name="ksu_independent">关闭页面或悬浮窗不会停止模块供音；点击“恢复真麦并断开”才结束本次控制。APP 意外退出后模块仍可能继续播放。</string>
+    <string name="ksu_independent">关闭页面或悬浮窗不会停止供音；点击“恢复真麦并断开”结束控制。APP 意外退出后，文件仍可能继续播放，实时接入会自动结束并恢复真麦。</string>
     <string name="ksu_mix">混入真实麦克风</string>
-    <string name="ksu_mix_hint">仅文件模式混音；暂停伴奏时保留人声，静音关闭全部声音。</string>
+    <string name="ksu_mix_hint">文件和实时模式均可混音；暂停伴奏时保留人声，静音关闭全部声音。</string>
     <string name="ksu_mix_upgrade">混音需要模块 0.1.0.10 或更新版本；更新后需重新启动目标应用。</string>
     <string name="ksu_mic_level">人声音量 · %1$d%%</string>
+    <string name="ksu_live_title">实时 APP 音频</string>
+    <string name="ksu_live_choose">选择音源应用</string>
+    <string name="ksu_live_hint">将所选音乐应用的播放声音送入模块，手机仍可正常播放。需保持 APP 服务运行；音源应用不能同时作为录音目标。</string>
+    <string name="ksu_live_start">开始实时接入</string>
+    <string name="ksu_live_stop">停止实时接入</string>
+    <string name="ksu_live_source">实时 · %1$s</string>
+    <string name="ksu_live_upgrade">实时接入需要模块 0.1.0.11 或更新版本。请在主控制页选择音源应用。</string>
 </resources>

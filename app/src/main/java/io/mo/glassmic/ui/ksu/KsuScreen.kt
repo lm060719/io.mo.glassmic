@@ -36,6 +36,7 @@ fun KsuScreen(page: KsuPage = KsuPage.CONTROLS, onBack: (() -> Unit)? = null,
     val state by vm.state.collectAsStateWithLifecycle()
     val runtime by vm.runtimeState.collectAsStateWithLifecycle()
     val apps by vm.apps.collectAsStateWithLifecycle()
+    val sourceApps by vm.sourceApps.collectAsStateWithLifecycle()
     val error by vm.error.collectAsStateWithLifecycle()
     val switching by vm.switching.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -45,7 +46,27 @@ fun KsuScreen(page: KsuPage = KsuPage.CONTROLS, onBack: (() -> Unit)? = null,
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(vm::importAudio)
     }
-    LaunchedEffect(page) { if (page == KsuPage.TARGETS) vm.loadApps() }
+    val selectedLive by vm.controller.selectedLivePackage.collectAsStateWithLifecycle()
+    var livePicker by remember { mutableStateOf(false) }
+    LaunchedEffect(page) { vm.loadApps() }
+    if (livePicker) {
+        var search by remember { mutableStateOf("") }
+        androidx.compose.material3.AlertDialog(onDismissRequest = { livePicker = false },
+            title = { Text(stringResource(R.string.ksu_live_choose)) },
+            text = {
+                Column {
+                    GlassTextField(search, { search = it }, placeholder = stringResource(R.string.ksu_search))
+                    LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                        items(sourceApps.filter { (it.label.contains(search, true) || it.packageName.contains(search, true)) &&
+                            it.packageName !in snapshot?.targets.orEmpty() }, key = { it.packageName }) { app ->
+                            Column(Modifier.fillMaxWidth().clickable {
+                                vm.controller.selectLivePackage(app.packageName);livePicker = false
+                            }.padding(vertical = 10.dp)) { Text(app.label);Text(app.packageName, fontSize = 11.sp) }
+                        }
+                    }
+                }
+            }, confirmButton = { SoftButton(stringResource(android.R.string.cancel), { livePicker = false }) })
+    }
 
     GlassPage {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(18.dp, 12.dp, 18.dp, 120.dp),
@@ -73,6 +94,14 @@ fun KsuScreen(page: KsuPage = KsuPage.CONTROLS, onBack: (() -> Unit)? = null,
             }
             if (page == KsuPage.CONTROLS) {
                 item { GlassCard { KsuPlaybackControls(state, runtime.enabled, vm.controller) } }
+                item {
+                    GlassCard {
+                        Text(stringResource(R.string.ksu_live_title), fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.ksu_live_hint), color = glass.ink3, fontSize = 12.sp)
+                        Text(sourceApps.firstOrNull { it.packageName == selectedLive }?.label ?: selectedLive, color = glass.ink2)
+                        SoftButton(stringResource(R.string.ksu_live_choose), { livePicker = true }, enabled = enabled)
+                    }
+                }
                 item {
                     GlassCard {
                         SoftButton(stringResource(if (runtime.floatingWindowVisible) R.string.ksu_hide_float else R.string.ksu_show_float), {
@@ -145,7 +174,7 @@ fun KsuPlaybackControls(state: KsuState, running: Boolean, controller: KsuContro
     val snapshot = state.snapshot
     val enabled = running && state.connected && !state.busy && !state.stopping
     Text(when (snapshot?.mode) {
-        1 -> snapshot.selected
+        1 -> if (snapshot.live) stringResource(R.string.ksu_live_source, snapshot.liveSource) else snapshot.selected
         2 -> stringResource(R.string.source_silence)
         else -> stringResource(R.string.source_real_mic)
     }, fontWeight = FontWeight.SemiBold)
@@ -153,14 +182,19 @@ fun KsuPlaybackControls(state: KsuState, running: Boolean, controller: KsuContro
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         SoftButton(stringResource(if (snapshot?.playing == true) R.string.ksu_pause else R.string.ksu_play),
             { controller.command(if (snapshot?.playing == true) "pause" else "play") },
-            enabled = enabled && !snapshot?.selected.isNullOrBlank())
+            enabled = enabled && (snapshot?.live == true || !snapshot?.selected.isNullOrBlank()))
         SoftButton(stringResource(R.string.ksu_real), { controller.command("real") }, enabled = enabled)
         SoftButton(stringResource(R.string.ksu_silence), { controller.command("silence") }, enabled = enabled)
     }
+    val selectedLive by controller.selectedLivePackage.collectAsStateWithLifecycle()
+    SoftButton(stringResource(if (snapshot?.live == true) R.string.ksu_live_stop else R.string.ksu_live_start),
+        { if (snapshot?.live == true) controller.command("real") else controller.startLive() },
+        enabled = enabled && snapshot?.liveSupported == true && (snapshot.live || selectedLive.isNotBlank()))
+    if (snapshot != null && !snapshot.liveSupported) Text(stringResource(R.string.ksu_live_upgrade), color = glass.ink3, fontSize = 12.sp)
     if (snapshot != null) {
-        KsuSlider(stringResource(R.string.ksu_progress, time(snapshot.positionMs), time(snapshot.durationMs)),
+        if (!snapshot.live) KsuSlider(stringResource(R.string.ksu_progress, time(snapshot.positionMs), time(snapshot.durationMs)),
             if (snapshot.durationMs > 0) snapshot.positionMs.toFloat() / snapshot.durationMs else 0f,
-            0f..1f, enabled && snapshot.durationMs > 0) {
+            0f..1f, enabled && !snapshot.live && snapshot.durationMs > 0) {
             controller.command("seek", listOf((it * snapshot.durationMs).toLong().toString()))
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -177,10 +211,10 @@ fun KsuPlaybackControls(state: KsuState, running: Boolean, controller: KsuContro
         KsuSlider(stringResource(R.string.ksu_gain, String.format(Locale.ROOT, "%.1f", snapshot.gainDb)),
             snapshot.gainDb, -24f..12f, enabled) { controller.command("gain", listOf(it.toString())) }
         KsuSlider(stringResource(R.string.ksu_speed, String.format(Locale.ROOT, "%.2f", snapshot.speed)),
-            snapshot.speed, .5f..2f, enabled) { controller.command("speed", listOf(it.toString())) }
+            snapshot.speed, .5f..2f, enabled && !snapshot.live) { controller.command("speed", listOf(it.toString())) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.library_policy_loop), Modifier.weight(1f))
-            GlassToggle(snapshot.loop, { controller.command("loop", listOf(if (it) "1" else "0")) }, enabled)
+            GlassToggle(snapshot.loop, { controller.command("loop", listOf(if (it) "1" else "0")) }, enabled && !snapshot.live)
         }
     }
 }

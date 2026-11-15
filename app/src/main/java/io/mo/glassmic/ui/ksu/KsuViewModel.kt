@@ -39,6 +39,8 @@ class KsuViewModel @Inject constructor(
     val runtimeState = runtime.flow
     private val mutableApps = MutableStateFlow<List<KsuApp>>(emptyList())
     val apps = mutableApps.asStateFlow()
+    private val mutableSourceApps = MutableStateFlow<List<KsuApp>>(emptyList())
+    val sourceApps = mutableSourceApps.asStateFlow()
     private val mutableError = MutableStateFlow<String?>(null)
     val error = mutableError.asStateFlow()
     private val mutableSwitching = MutableStateFlow(false)
@@ -75,11 +77,14 @@ class KsuViewModel @Inject constructor(
 
     fun loadApps() = viewModelScope.launch(Dispatchers.IO) {
         runCatching {
-            context.packageManager.getInstalledApplications(0)
-                .filter { it.packageName != context.packageName && it.flags and ApplicationInfo.FLAG_SYSTEM == 0 }
-                .map { KsuApp(it.packageName, it.loadLabel(context.packageManager).toString()) }
-                .sortedBy { it.label.lowercase() }
-        }.onSuccess { mutableApps.value = it }.onFailure { mutableError.value = it.message }
+            val installed = context.packageManager.getInstalledApplications(0)
+                .filter { it.uid != android.os.Process.myUid() && it.uid % 100000 >= 10000 }
+            val labeled = installed.associate { it.packageName to KsuApp(it.packageName,
+                it.loadLabel(context.packageManager).toString()) }
+            mutableSourceApps.value = labeled.values.sortedBy { it.label.lowercase() }
+            mutableApps.value = installed.filter { it.flags and ApplicationInfo.FLAG_SYSTEM == 0 }
+                .map { labeled.getValue(it.packageName) }.sortedBy { it.label.lowercase() }
+        }.onFailure { mutableError.value = it.message }
     }
 
     fun toggleTarget(packageName: String) {

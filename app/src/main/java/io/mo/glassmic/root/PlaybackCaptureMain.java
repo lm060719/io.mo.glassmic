@@ -5,6 +5,13 @@ import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.os.Looper;
+import android.net.LocalSocket;
+import android.net.LocalSocketAddress;
+import android.system.Os;
+import android.system.OsConstants;
+import android.system.StructTimeval;
+import org.json.JSONObject;
+import java.io.OutputStream;
 import android.os.Process;
 import android.os.SystemClock;
 
@@ -20,11 +27,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Uses only framework/Java classes, never the Application/Hilt.
  *
  * Registers a dynamic AudioPolicy whose loopback mix matches the source app's players by UID,
- * reads it through {@code createAudioRecordSink} and streams raw PCM16 LE mono 48 kHz into a FIFO.
+ * reads it through {@code createAudioRecordSink} and streams raw PCM16 LE mono 48 kHz into a FIFO
+ * or directly into the KSU module's root-only Unix socket.
  * A root-registered policy is not subject to the player's allowed-capture policy, and must NOT set
  * {@code allowPrivilegedPlaybackCapture}: that path is capped at 16 kHz.
  *
- * Arguments: source app UID, render flag (1 = keep playing on the device, 0 = divert), FIFO path.
+ * Arguments: source app UID, render flag (1 = keep playing on the device, 0 = divert), FIFO path
+ * or {@code --ksu source.package positive-session-token}.
  * Ownership mirrors {@link AudioPolicyMain}: stdin EOF / STOP or a missing PING ends the process.
  */
 public final class PlaybackCaptureMain {
@@ -39,7 +48,7 @@ public final class PlaybackCaptureMain {
     private static final AtomicBoolean exiting = new AtomicBoolean();
 
     public static void main(String[] args) {
-        if (Process.myUid() != 0 || args.length != 3) {
+        if (Process.myUid() != 0 || (args.length != 3 && (args.length != 5 || !"--ksu".equals(args[2])))) {
             System.out.println("ERROR Root access, source UID, render flag and FIFO are required");
             System.exit(1);
         }
@@ -75,14 +84,13 @@ public final class PlaybackCaptureMain {
             register(uid, render);
             new Thread(() -> {
                 try {
-                    pump(args[2]);
+                    if (args.length == 5) pumpModule(args[3], Long.parseLong(args[4]));
+                    else pump(args[2]);
                     exit(0);
                 } catch (Throwable error) {
                     fail(error);
                 }
             }, "glassmic-capture-pcm").start();
-            System.out.println("READY");
-            System.out.flush();
             Looper.loop();
         } catch (Throwable error) {
             fail(error);
@@ -153,10 +161,40 @@ public final class PlaybackCaptureMain {
         byte[] pcm = new byte[CHUNK_BYTES];
         // The parent opened the read end before launching us, so this open does not block.
         try (FileOutputStream out = new FileOutputStream(fifo)) {
+            System.out.println("READY");
+            System.out.flush();
             while (true) {
                 int n = record.read(pcm, 0, pcm.length);
                 if (n < 0) throw new IllegalStateException("AudioRecord.read: " + n);
                 if (n > 0) out.write(pcm, 0, n); // EPIPE once the parent closes its end.
+            }
+        }
+    }
+
+    private static void pumpModule(String sourcePackage, long session) throws Exception {
+        Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
+        try (LocalSocket socket = new LocalSocket()) {
+            socket.connect(new LocalSocketAddress("/data/adb/glassmic/control.sock", LocalSocketAddress.Namespace.FILESYSTEM));
+            socket.setSoTimeout(5000);
+            Os.setsockoptTimeval(socket.getFileDescriptor(), OsConstants.SOL_SOCKET, OsConstants.SO_SNDTIMEO,
+                    StructTimeval.fromMillis(2000));
+            OutputStream out = socket.getOutputStream();
+            out.write(KsuLiveProtocol.request(sourcePackage, session));
+            JSONObject reply = new JSONObject(KsuLiveProtocol.reply(socket.getInputStream()));
+            if (!reply.getBoolean("ok") || !Long.toString(session).equals(reply.optString("liveSession")))
+                throw new IllegalStateException(reply.optString("error", "Module live handshake failed"));
+            socket.setSoTimeout(0);
+            // Detect module source switches even when AudioRecord is blocked waiting for playback.
+            new Thread(() -> {
+                try { socket.getInputStream().read(); } catch (Exception ignored) { }
+                exit(0);
+            }, "glassmic-module-owner").start();
+            System.out.println("READY");System.out.flush();
+            byte[] pcm = new byte[CHUNK_BYTES];
+            while (true) {
+                int n = record.read(pcm, 0, pcm.length);
+                if (n < 0) throw new IllegalStateException("AudioRecord.read: " + n);
+                if (n > 0) out.write(pcm, 0, n);
             }
         }
     }

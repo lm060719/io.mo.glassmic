@@ -27,9 +27,16 @@
     <string name="ksu_gain">Accompaniment gain %1$s dB</string>
     <string name="ksu_speed">Playback speed %1$s×</string>
     <string name="ksu_switch_failed">KSU has not confirmed real microphone mode. Restore the mic in its WebUI, reconnect, then retry switching backends.</string>
-    <string name="ksu_independent">Closing this page or the floating controls keeps the module playing. Use “Restore mic &amp; disconnect” to end control. Playback may continue if the app exits unexpectedly.</string>
+    <string name="ksu_independent">Closing this page or the floating controls keeps audio running. Use “Restore mic &amp; disconnect” to end control. If the app exits unexpectedly, file playback may continue; live input ends and restores the real microphone.</string>
     <string name="ksu_mix">Mix real microphone</string>
-    <string name="ksu_mix_hint">Mixing applies to file mode. Pausing keeps your voice; Silence mutes everything.</string>
+    <string name="ksu_mix_hint">Mixing applies to file and live modes. Pausing keeps your voice; Silence mutes everything.</string>
     <string name="ksu_mix_upgrade">Mixing requires module 0.1.0.10 or newer. Restart target apps after updating.</string>
     <string name="ksu_mic_level">Microphone volume · %1$d%%</string>
+    <string name="ksu_live_title">Live app audio</string>
+    <string name="ksu_live_choose">Choose source app</string>
+    <string name="ksu_live_hint">Capture the selected music app into the module. Playback stays audible on the phone. Keep the APP service running; the source cannot also be a recording target.</string>
+    <string name="ksu_live_start">Start live input</string>
+    <string name="ksu_live_stop">Stop live input</string>
+    <string name="ksu_live_source">Live · %1$s</string>
+    <string name="ksu_live_upgrade">Live input requires module 0.1.0.11 or newer. Choose a source app on the main control page.</string>
 </resources>

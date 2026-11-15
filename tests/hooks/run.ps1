@@ -24,6 +24,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Hook diagnostics regressions failed.' }
 
 $ksuSources = @(
     (Join-Path $PSScriptRoot 'KsuRegression.java'),
+    (Join-Path $PSScriptRoot 'KsuLiveRegression.java'),
+    (Join-Path $repo 'app/src/main/java/io/mo/glassmic/root/KsuLiveProtocol.java'),
     (Join-Path $repo 'app/src/main/java/io/mo/glassmic/root/KsuCommand.java'),
     (Join-Path $repo 'app/src/main/java/io/mo/glassmic/root/KsuProcess.java')
 )
@@ -31,3 +33,6 @@ $ksuSources = @(
 if ($LASTEXITCODE -ne 0) { throw 'KSU regression compilation failed.' }
 & java -cp $classpath KsuRegression
 if ($LASTEXITCODE -ne 0) { throw 'KSU regressions failed.' }
+
+& java -cp $classpath KsuLiveRegression
+if ($LASTEXITCODE -ne 0) { throw 'KSU live regressions failed.' }

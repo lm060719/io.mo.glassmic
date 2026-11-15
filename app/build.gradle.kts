@@ -16,8 +16,8 @@ android {
         applicationId = "io.mo.glassmic"
         minSdk = 29
         targetSdk = 35
-        versionCode = 35
-        versionName = "1.5.1.2"
+        versionCode = 36
+        versionName = "1.5.1.3"
         // 只打包中英文资源；resourceConfigurations 在 AGP 9 新 DSL 中已弃用，改用 localeFilters
         androidResources.localeFilters += listOf("zh-rCN", "en")
     }

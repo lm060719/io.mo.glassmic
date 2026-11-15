@@ -82,8 +82,8 @@ class LiveCaptureController @Inject constructor(
 
     private class Session(
         val process: Process,
-        val fifo: File,
-        val fd: FileDescriptor,
+        val fifo: File?,
+        val fd: FileDescriptor?,
         val source: LiveCaptureSource
     ) {
         val ready = CompletableDeferred<Unit>()
@@ -102,7 +102,7 @@ class LiveCaptureController @Inject constructor(
     }
 
     /** 开始抓取 [packageName] 的播放声音；失败抛异常并把状态置为 ERROR。 */
-    suspend fun open(packageName: String, render: Boolean = true): LiveCaptureSource = mutex.withLock {
+    suspend fun open(packageName: String, render: Boolean = true, moduleSession: Long? = null): LiveCaptureSource = mutex.withLock {
         closeLocked()
         publish(LivePhase.STARTING, packageName)
         try {
@@ -111,10 +111,10 @@ class LiveCaptureController @Inject constructor(
                 "不支持抓取系统进程或 GlassMic 自身"
             }
             if (app.flags and ApplicationInfo.FLAG_INSTALLED == 0) throw IOException("应用未安装")
-            val opened = start(app.uid, render, packageName)
+            val opened = start(app.uid, render, packageName, moduleSession)
             session = opened
             withTimeout(START_TIMEOUT_MS) { opened.ready.await() }
-            startPump(opened)
+            if (moduleSession == null) startPump(opened)
             publish(LivePhase.ACTIVE, packageName)
             GlassLog.b("LiveCapture") { "已开始抓取 $packageName uid=${app.uid} render=$render" }
             opened.source
@@ -147,24 +147,28 @@ class LiveCaptureController @Inject constructor(
         }
     }
 
-    private fun start(uid: Int, render: Boolean, packageName: String): Session {
+    private fun start(uid: Int, render: Boolean, packageName: String, moduleSession: Long?): Session {
         val dir = File(context.filesDir, "live-capture").apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() } // 上次异常退出残留的 FIFO
-        val fifo = File(dir, "pcm-${UUID.randomUUID()}")
-        Os.mkfifo(fifo.absolutePath, 0x180 /* 0600 */)
+        val fifo = if (moduleSession == null) File(dir, "pcm-${UUID.randomUUID()}") else null
+        fifo?.let { Os.mkfifo(it.absolutePath, 0x180 /* 0600 */) }
         // 先以非阻塞方式打开读端：root 端随后以阻塞方式打开写端时不会卡住
         val fd = try {
-            Os.open(fifo.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NONBLOCK, 0)
+            fifo?.let { Os.open(it.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NONBLOCK, 0) }
         } catch (error: ErrnoException) {
-            fifo.delete(); throw error
+            fifo?.delete(); throw error
         }
+        val destination = if (moduleSession != null) {
+            KsuLiveProtocol.request(packageName, moduleSession) // validate before building shell text
+            "--ksu ${quote(packageName)} $moduleSession"
+        } else quote(checkNotNull(fifo).absolutePath)
         val command = "CLASSPATH=${quote(context.applicationInfo.sourceDir)} exec /system/bin/app_process " +
-            "/system/bin io.mo.glassmic.root.PlaybackCaptureMain $uid ${if (render) 1 else 0} ${quote(fifo.absolutePath)}"
+            "/system/bin io.mo.glassmic.root.PlaybackCaptureMain $uid ${if (render) 1 else 0} $destination"
         val process = try {
             ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
         } catch (error: Exception) {
-            runCatching { Os.close(fd) }
-            fifo.delete()
+            fd?.let { runCatching { Os.close(it) } }
+            fifo?.delete()
             throw error
         }
         val current = Session(process, fifo, fd, LiveCaptureSource(packageName, ::onSourceReleased))
@@ -218,15 +222,16 @@ class LiveCaptureController @Inject constructor(
 
     /** 专用线程：poll FIFO，把 PCM 推进环形缓冲。 */
     private fun startPump(current: Session) {
+        val captureFd = checkNotNull(current.fd)
         current.pump = Thread({
             runCatching { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO) }
             val buf = ByteArray(4096)
-            val pfd = StructPollfd().apply { fd = current.fd; events = OsConstants.POLLIN.toShort() }
+            val pfd = StructPollfd().apply { fd = captureFd; events = OsConstants.POLLIN.toShort() }
             var carry = -1 // 奇数字节时暂存，保证推进去的始终是完整 16 位样本
             while (!current.closed) {
                 try {
                     if (Os.poll(arrayOf(pfd), 200) <= 0) continue
-                    val n = Os.read(current.fd, buf, 1, buf.size - 1)
+                    val n = Os.read(captureFd, buf, 1, buf.size - 1)
                     if (n == 0) { Thread.sleep(20); continue } // 写端尚未打开或已关闭
                     var start = 1
                     var len = n
@@ -255,13 +260,13 @@ class LiveCaptureController @Inject constructor(
         // 关闭 owner 通道 → root 进程退出并注销 AudioPolicy
         runCatching { current.process.outputStream.close() }
         current.pump?.join(500)
-        runCatching { Os.close(current.fd) }
+        current.fd?.let { runCatching { Os.close(it) } }
         withContext(Dispatchers.IO) {
             if (!current.process.waitFor(2, TimeUnit.SECONDS)) current.process.destroyForcibly()
         }
         current.reader?.cancelAndJoin()
         runCatching { current.process.inputStream.close() }
-        current.fifo.delete()
+        current.fifo?.delete()
         GlassLog.b("LiveCapture") { "已结束抓取 ${current.source.packageName}" }
     }
 

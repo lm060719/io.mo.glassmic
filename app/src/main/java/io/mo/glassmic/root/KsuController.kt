@@ -33,7 +33,11 @@ data class KsuSnapshot(
     val mixSupported: Boolean = false,
     val mix: Boolean = false,
     val micLevel: Int = 100,
-    val mixNeedsRestart: Boolean = false
+    val mixNeedsRestart: Boolean = false,
+    val liveSupported: Boolean = false,
+    val live: Boolean = false,
+    val liveSource: String = "",
+    val liveSession: String = ""
 ) {
     val playing: Boolean get() = mode == 1 && !paused
 
@@ -71,7 +75,9 @@ data class KsuSnapshot(
                 json.getBoolean("loop"), (0 until files.length()).map { files.getJSONObject(it).getString("name") }
                     .filter(KsuCommand::mediaName).sorted(),
                 (0 until targets.length()).map { targets.getString(it) }.toSet(),
-                mixSupported, mixSupported && json.getBoolean("mix"), micLevel.toInt(), needsRestart)
+                mixSupported, mixSupported && json.getBoolean("mix"), micLevel.toInt(), needsRestart,
+                json.optBoolean("liveSupported", false), json.optBoolean("live", false),
+                json.optString("liveSource", ""), json.optString("liveSession", ""))
         }
     }
 }
@@ -90,19 +96,76 @@ class KsuController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val config: ConfigStore,
     private val runtime: RuntimeStateHolder,
-    private val bootGate: BootGateRepository
+    private val bootGate: BootGateRepository,
+    private val capture: LiveCaptureController
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
     private val mutableState = MutableStateFlow(KsuState())
     val state: StateFlow<KsuState> = mutableState.asStateFlow()
     private val power = context.getSystemService(PowerManager::class.java)
+    private val liveWake = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "GlassMic:KsuLive").apply { setReferenceCounted(false) }
     @Volatile private var active = false
     private var poller: Job? = null
     private val lifecycleLock = Any()
     private var releaseJob: Deferred<Boolean>? = null
     // A failed release must remain retryable; never report the module as stopped on an error.
     @Volatile private var touched = false
+    private var liveSession: String? = null // protected by mutex
+    val selectedLivePackage = capture.selectedPackage
+    fun selectLivePackage(packageName: String) = capture.selectPackage(packageName)
+
+    init {
+        scope.launch {
+            capture.status.collect { status ->
+                if (status.phase == LivePhase.ERROR) mutex.withLock {
+                    if (liveSession != null && capture.status.value == status) {
+                        stopCapture()
+                        runCatching { receive("status") }
+                        if (state.value.snapshot?.mode == 0) mutableState.update { it.copy(error = status.detail) }
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun stopCapture() {
+        if (liveSession == null) return
+        liveSession = null
+        try { capture.close() } finally { if (liveWake.isHeld) liveWake.release() }
+    }
+
+    fun startLive() {
+        if (state.value.busy || state.value.stopping) return
+        mutableState.update { it.copy(busy = true, error = null) }
+        scope.launch {
+            mutex.withLock {
+                try {
+                    if (!permitted()) return@withLock
+                    receive("status")
+                    check(state.value.snapshot?.liveSupported == true) { "Live input requires module 0.1.0.11 or newer" }
+                    val source = selectedLivePackage.value
+                    val app = context.packageManager.getApplicationInfo(source, 0)
+                    val aliases = context.packageManager.getPackagesForUid(app.uid).orEmpty().toSet()
+                    require(aliases.none { it in state.value.snapshot!!.targets }) { "Capture source cannot also be a recording target" }
+                    stopCapture()
+                    receive("real")
+                    if (!permitted()) return@withLock
+                    val token = (UUID.randomUUID().mostSignificantBits and Long.MAX_VALUE).coerceAtLeast(1)
+                    liveSession = token.toString()
+                    liveWake.acquire()
+                    capture.open(source, render = true, moduleSession = token)
+                    if (!permitted()) { stopCapture(); receive("real"); return@withLock }
+                    receive("status")
+                    check(state.value.snapshot?.liveSession == token.toString()) { "Live input was interrupted" }
+                } catch (error: Exception) {
+                    stopCapture()
+                    // Closing the owned socket restores REAL only if that session is still active.
+                    mutableState.update { it.copy(error = error.message) }
+                } finally { mutableState.update { it.copy(busy = false) } }
+            }
+        }
+    }
 
     fun start() = synchronized(lifecycleLock) {
         poller?.cancel()
@@ -150,6 +213,13 @@ class KsuController @Inject constructor(
             mutex.withLock {
                 try {
                     if (!permitted()) return@withLock
+                    if (action in setOf("real", "silence", "load")) stopCapture()
+                    if (action == "targets" && liveSession != null) {
+                        val source = state.value.snapshot?.liveSource.orEmpty()
+                        val uid = context.packageManager.getApplicationInfo(source, 0).uid
+                        val aliases = context.packageManager.getPackagesForUid(uid).orEmpty()
+                        require(aliases.none { it in args }) { "Capture source cannot also be a recording target" }
+                    }
                     receive(action, args)
                     if (action == "load" && permitted()) receive("play")
                 } catch (cancelled: CancellationException) { throw cancelled
@@ -169,6 +239,7 @@ class KsuController @Inject constructor(
         if (action != "status") markPending()
         val snapshot = KsuSnapshot.parse(KsuProcess.execute(command))
         markPending()
+        if (liveSession != null && snapshot.liveSession != liveSession) stopCapture()
         mutableState.update { it.copy(snapshot = snapshot, connected = true, error = null) }
     }
 
@@ -232,6 +303,7 @@ class KsuController @Inject constructor(
         scope.async {
             mutex.withLock {
                 try {
+                    stopCapture()
                     if (touched || config.current().ksuControlPending) {
                         receive("real")
                         check(state.value.snapshot?.mode == 0) { "Module did not restore the real microphone" }
