@@ -111,6 +111,7 @@ private fun AppConfig.toSnapshot(): ConfigSnapshot = ConfigSnapshot(
     blacklist = blacklistList.toSet(),
     onboardingCompleted = onboardingCompleted,
     audioPolicyBackend = injectionBackend == io.mo.glassmic.proto.InjectionBackend.AUDIO_POLICY,
+    kernelSuBackend = injectionBackend == io.mo.glassmic.proto.InjectionBackend.KERNEL_SU,
     audioPolicyPackages = audioPolicyTargets(),
     audioPolicyAllApps = audioPolicyAllApps
 )

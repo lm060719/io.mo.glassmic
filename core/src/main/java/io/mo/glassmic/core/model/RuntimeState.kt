@@ -30,5 +30,9 @@ data class ConfigSnapshot(
     val onboardingCompleted: Boolean,
     val audioPolicyBackend: Boolean = false,
     val audioPolicyPackages: Set<String> = emptySet(),
-    val audioPolicyAllApps: Boolean = false
-)
+    val audioPolicyAllApps: Boolean = false,
+    val kernelSuBackend: Boolean = false
+) {
+    fun handlesInAppBackend(forAudioPolicy: Boolean): Boolean =
+        !kernelSuBackend && audioPolicyBackend == forAudioPolicy
+}

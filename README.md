@@ -71,6 +71,19 @@ In **Audio Library → Link folder**, choose a local directory and optionally en
 
 If the directory is moved, its permission is revoked, or the app is restored from backup, use **Manage group → Grant access to original folder again** and choose the same directory. Folder links do not back up the external audio files; a restored index alone does not grant access to them. Android restricts selection of some directories, including the storage root and the Download directory itself; select an allowed subfolder instead.
 
+## KernelSU module controls (1.5.1.2)
+
+With the app service stopped, select **Settings → Injection backend → KernelSU module**, then **Connect module** on the microphone tab. This controls the separately installed `glassmic` module, version `0.1.0.9` or a compatible fourth-segment revision; it requires KernelSU root authorization and a working Zygisk runtime. The APK does not install or restart the module.
+
+- The microphone page and floating controls share module playback, pause, seek, real-mic/mute, gain (-24 to +12 dB), speed (0.5–2×), and loop state with the WebUI.
+- The library tab reads the module library. Import WAV, MP3 or FLAC (up to 512 MiB) through the system file picker. Imports create module copies without overwriting originals; the APK library remains separate.
+- The scope page edits the module targets directly. Newly added targets must be fully restarted. Remove them from the old LSPosed scope and restart them before using KSU; the app also gates off both its LSPosed and AudioPolicy PCM routes in KSU mode.
+- Closing the UI or floating window leaves playback running. **Restore mic & disconnect** waits for the module to acknowledge real-microphone mode. Backend switching is blocked if that acknowledgement fails. An app crash or force-stop can leave the independent module playing; its WebUI remains available.
+- Module 0.1.0.10 adds **Mix real microphone** with separate microphone volume (0–200%) and accompaniment gain. The app, floating panel and module WebUI share the module settings. Mixing applies to file mode: pausing or reaching the end keeps your voice, Silence mutes both sources, and Real microphone bypasses mixing. Restart target apps after updating the module. Older modules keep playback controls but cannot enable mixing.
+- APK TTS, live app capture, audio monitoring and effects are not yet routed into KSU; their controls remain hidden in KSU mode.
+
+This integration uses the installed `glassmicctl` and its root-only control socket; PCM stays in the module. Status refresh stops when the screen is off or there are no visible observers. JVM regressions cover backend exclusion, command validation and subprocess bounds; device integration and overlay behavior still require physical-device validation.
+
 ## How It Works
 
 GlassMic has three modules:

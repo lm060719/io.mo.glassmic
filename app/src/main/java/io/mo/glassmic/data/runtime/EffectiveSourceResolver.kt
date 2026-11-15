@@ -51,7 +51,7 @@ class EffectiveSourceResolver @Inject constructor(
         // 3. 首次启动门禁
         val snap = configStore.snapshotBlocking()
         // Both backends share the same gates, but only the selected backend may replace PCM.
-        if (snap.audioPolicyBackend != forAudioPolicy) {
+        if (!snap.handlesInAppBackend(forAudioPolicy)) {
             return Triple(SourceType.REAL_MIC, "OTHER_BACKEND", "由另一注入后端处理 (Other backend selected)")
         }
         if (!snap.onboardingCompleted) {

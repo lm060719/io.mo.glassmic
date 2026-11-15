@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_ksu">KernelSU module</string>
+    <string name="ksu_hint">Control the installed GlassMic KSU module (0.1.0.9 or a compatible revision). Requires Root and Zygisk. Remove target apps from the old LSPosed scope and restart them to avoid competing recording backends.</string>
+    <string name="ksu_library">Module audio library</string>
+    <string name="ksu_library_hint">Shared with the module WebUI. Import WAV, MP3 or FLAC (up to 512 MiB). The original app library stays separate. Tap a file to play it.</string>
+    <string name="ksu_connect">Connect module</string>
+    <string name="ksu_disconnect">Restore mic &amp; disconnect</string>
+    <string name="ksu_refresh">Refresh / retry</string>
+    <string name="ksu_hide_float">Close floating controls</string>
+    <string name="ksu_show_float">Open floating controls</string>
+    <string name="ksu_import">Import into module</string>
+    <string name="ksu_selected">Selected</string>
+    <string name="ksu_empty">No module audio yet. Import a file to get started.</string>
+    <string name="ksu_scope_hint">Saved directly to the KSU module and shared with its WebUI. Fully restart newly selected apps. Removing an app restores its real microphone immediately. The module protects critical system apps.</string>
+    <string name="ksu_search">Search app name or package</string>
+    <string name="ksu_stopping">Restoring the real microphone…</string>
+    <string name="ksu_working">Working…</string>
+    <string name="ksu_connected">Connected to KSU module</string>
+    <string name="ksu_disconnected">Disconnected (the module may still be running)</string>
+    <string name="ksu_error">Operation failed: %1$s. Check that the module is installed and enabled, grant this app Root access, then retry.</string>
+    <string name="ksu_pause">Pause</string>
+    <string name="ksu_play">Play</string>
+    <string name="ksu_real">Mic</string>
+    <string name="ksu_silence">Mute</string>
+    <string name="ksu_progress">Position %1$s / %2$s</string>
+    <string name="ksu_gain">Accompaniment gain %1$s dB</string>
+    <string name="ksu_speed">Playback speed %1$s×</string>
+    <string name="ksu_switch_failed">KSU has not confirmed real microphone mode. Restore the mic in its WebUI, reconnect, then retry switching backends.</string>
+    <string name="ksu_independent">Closing this page or the floating controls keeps the module playing. Use “Restore mic &amp; disconnect” to end control. Playback may continue if the app exits unexpectedly.</string>
+    <string name="ksu_mix">Mix real microphone</string>
+    <string name="ksu_mix_hint">Mixing applies to file mode. Pausing keeps your voice; Silence mutes everything.</string>
+    <string name="ksu_mix_upgrade">Mixing requires module 0.1.0.10 or newer. Restart target apps after updating.</string>
+    <string name="ksu_mic_level">Microphone volume · %1$d%%</string>
+</resources>

@@ -57,11 +57,15 @@ message AppConfig {
   // 注入音量倍率（导入音频与 TTS 共用）：0.0 - 3.0，未设置视为 1.0。
   // 用 optional 区分「未设置」与「调到 0 静音」。
   optional float output_gain = 24;
+
+  // A KSU control session may outlive the APK process. Clear only after REAL is acknowledged.
+  bool ksu_control_pending = 25;
 }
 
 enum InjectionBackend {
   LSPOSED = 0;
   AUDIO_POLICY = 1;
+  KERNEL_SU = 2;
 }
 
 message AudioBand {

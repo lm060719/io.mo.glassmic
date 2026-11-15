@@ -72,6 +72,7 @@ class FloatingWindowService : LifecycleService() {
     @Inject lateinit var iconStore: FloatingIconStore
     @Inject lateinit var volumeShortcut: VolumeShortcutRepository
     @Inject lateinit var ttsProgress: TtsProgress
+    @Inject lateinit var ksu: io.mo.glassmic.root.KsuController
     @Inject lateinit var liveCapture: io.mo.glassmic.root.LiveCaptureController
 
     private var windowManager: WindowManager? = null
@@ -102,7 +103,7 @@ class FloatingWindowService : LifecycleService() {
         // 音量键快捷操作只在悬浮窗存活期间布防，开关变化即时生效
         lifecycleScope.launch {
             configStore.flow
-                .map { it.shortcuts.volumeKeysEnabled }
+                .map { it.shortcuts.volumeKeysEnabled && it.injectionBackend != io.mo.glassmic.proto.InjectionBackend.KERNEL_SU }
                 .distinctUntilChanged()
                 .collect { applyVolumeShortcut(it) }
         }
@@ -249,6 +250,19 @@ class FloatingWindowService : LifecycleService() {
             GlassThemeContent(appearance.theme, appearance.glassEffect, appearance.reduceMotion) {
                 val rt by runtime.flow.collectAsState()
                 val cfg by cfgState
+                if (cfg.injectionBackend == io.mo.glassmic.proto.InjectionBackend.KERNEL_SU) {
+                    val ksuMode by modeFlow.collectAsState()
+                    val bounds by overlayBoundsFlow.collectAsState()
+                    val dp = LocalDensity.current
+                    io.mo.glassmic.ui.ksu.KsuFloatingPanel(
+                        controller = ksu, running = rt.enabled, expanded = ksuMode != FloatMode.BALL,
+                        maxWidth = with(dp) { bounds.width().toDp() }, maxHeight = with(dp) { bounds.height().toDp() },
+                        size = sizeToDp(cfg.floatingWindow.size), opacity = cfg.floatingWindow.opacity.takeIf { it > 0f } ?: .85f,
+                        onExpand = { setMode(FloatMode.MENU) }, onCollapse = { setMode(FloatMode.BALL) },
+                        onClose = { stopSelf() }, onDrag = ::onDragBy, onDragEnd = ::onDragEnd
+                    )
+                    return@GlassThemeContent
+                }
                 val groups by audioDao.observeGroups().collectAsState(initial = emptyList())
                 val allClips by audioDao.observeAllClips().collectAsState(initial = emptyList())
                 val mode by modeFlow.collectAsState()

@@ -201,6 +201,10 @@ private fun AppNavHost(nav: NavHostController, gate: GateDecision) {
         else -> Routes.MAIN
     }
 
+    val ksuVm: io.mo.glassmic.ui.ksu.KsuViewModel = hiltViewModel()
+    val backend by ksuVm.backend.collectAsState()
+    if (backend == null) return
+    val isKsu = backend == io.mo.glassmic.proto.InjectionBackend.KERNEL_SU
     val reduceMotion = LocalReduceMotion.current
     NavHost(
         nav,
@@ -235,12 +239,16 @@ private fun AppNavHost(nav: NavHostController, gate: GateDecision) {
         }
         composable(Routes.MAIN) {
             MainPager(
+                isKsu = isKsu,
                 onOpenScope = { nav.navigate(Routes.SCOPE) },
                 onOpenAiTts = { nav.navigate(Routes.AI_TTS) },
                 onOpenDiagnostic = { nav.navigate(Routes.DIAGNOSTICS) }
             )
         }
-        composable(Routes.SCOPE) { ScopeScreen(onBack = { nav.popBackStack() }) }
+        composable(Routes.SCOPE) {
+            if (isKsu) io.mo.glassmic.ui.ksu.KsuScreen(io.mo.glassmic.ui.ksu.KsuPage.TARGETS, onBack = { nav.popBackStack() })
+            else ScopeScreen(onBack = { nav.popBackStack() })
+        }
         composable(Routes.AI_TTS) { AiTtsSettingsScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.DIAGNOSTICS) { DiagnosticScreen(onBack = { nav.popBackStack() }) }
         composable(Routes.SAFE_MODE) {
@@ -259,6 +267,7 @@ private fun AppNavHost(nav: NavHostController, gate: GateDecision) {
  */
 @Composable
 private fun MainPager(
+    isKsu: Boolean,
     onOpenScope: () -> Unit,
     onOpenAiTts: () -> Unit,
     onOpenDiagnostic: () -> Unit
@@ -279,7 +288,12 @@ private fun MainPager(
                 beyondViewportPageCount = TABS.size - 1,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
-                when (page) {
+                if (isKsu && page < 2) {
+                    io.mo.glassmic.ui.ksu.KsuScreen(
+                        page = if (page == 0) io.mo.glassmic.ui.ksu.KsuPage.CONTROLS else io.mo.glassmic.ui.ksu.KsuPage.LIBRARY,
+                        onOpenTargets = onOpenScope
+                    )
+                } else when (page) {
                     0 -> HomeScreen(
                         onOpenLibrary = { goTo(PAGE_LIBRARY) },
                         onOpenScope = onOpenScope,

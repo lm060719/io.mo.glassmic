@@ -57,6 +57,7 @@ import io.mo.glassmic.ui.theme.PageBackdrop
 import androidx.activity.result.PickVisualMediaRequest
 import io.mo.glassmic.proto.FloatingSize
 import io.mo.glassmic.proto.InjectionBackend
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.mo.glassmic.proto.PlaybackPolicy
 import io.mo.glassmic.proto.ThemeMode
 import io.mo.glassmic.proto.TtsProvider
@@ -87,6 +88,9 @@ fun SettingsScreen(
     val state by vm.state.collectAsState()
     val policyStatus by vm.policyStatus.collectAsState()
     val runtimeState by vm.runtimeState.collectAsState()
+    val ksuState by vm.ksuState.collectAsStateWithLifecycle()
+    val backendSwitching by vm.backendSwitching.collectAsState()
+    val backendError by vm.backendError.collectAsState()
     val exporting by vm.exporting.collectAsState()
     val toast = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -241,6 +245,7 @@ fun SettingsScreen(
                         onSelect = vm::setFloatingSize
                     )
                 }
+                if (cfg.injectionBackend != InjectionBackend.KERNEL_SU) {
                 val fw = cfg.floatingWindow
                 val customPanel = fw.panelWidthDp > 0 || fw.panelHeightDp > 0
                 SettingRow(
@@ -281,9 +286,11 @@ fun SettingsScreen(
                     checked = cfg.shortcuts.volumeKeysEnabled,
                     onChange = vm::setVolumeKeysEnabled
                 )
+                }
             } }
 
             // ============ 音频 ============
+            if (cfg.injectionBackend != InjectionBackend.KERNEL_SU) {
             item { Section(stringResource(R.string.settings_section_audio)) {
                 SettingRow(
                     title = stringResource(R.string.ai_tts_title),
@@ -351,17 +358,25 @@ fun SettingsScreen(
                 )
             }
 
+            }
+
             // ============ 注入方式 ============
             item { Section(stringResource(R.string.backend_title)) {
-                val canChange = !runtimeState.enabled &&
+                val canChange = !runtimeState.enabled && !backendSwitching && !ksuState.busy && !ksuState.stopping &&
                     policyStatus.phase !in listOf(PolicyPhase.STARTING, PolicyPhase.ACTIVE, PolicyPhase.STOPPING)
                 listOf(
                     InjectionBackend.LSPOSED to stringResource(R.string.backend_lsposed),
-                    InjectionBackend.AUDIO_POLICY to stringResource(R.string.backend_audio_policy)
+                    InjectionBackend.AUDIO_POLICY to stringResource(R.string.backend_audio_policy),
+                    InjectionBackend.KERNEL_SU to stringResource(R.string.backend_ksu)
                 ).forEach { (backend, label) ->
                     PolicyOption(label, cfg.injectionBackend == backend, enabled = canChange) { vm.setBackend(backend) }
                 }
                 Column(Modifier.padding(vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    backendError?.let { Text(it, color = t.err, fontSize = 12.sp) }
+                    if (cfg.injectionBackend == InjectionBackend.KERNEL_SU) {
+                        Text(stringResource(R.string.ksu_hint), fontSize = 12.sp, color = t.ink3)
+                        io.mo.glassmic.ui.ksu.KsuStatus(ksuState)
+                    }
                     Text(stringResource(R.string.backend_switch_hint), fontSize = 12.sp, color = t.ink3, lineHeight = 17.sp)
                     if (cfg.injectionBackend == InjectionBackend.AUDIO_POLICY) {
                         Text(stringResource(R.string.backend_policy_hint), fontSize = 12.sp, color = t.ink3, lineHeight = 17.sp)
@@ -396,7 +411,7 @@ fun SettingsScreen(
                 )
             } }
 
-            item { Section(stringResource(R.string.settings_section_experimental)) {
+            if (cfg.injectionBackend != InjectionBackend.KERNEL_SU) item { Section(stringResource(R.string.settings_section_experimental)) {
                 ToggleRow(
                     title = stringResource(R.string.settings_experimental_unlock),
                     subtitle = stringResource(R.string.settings_experimental_unlock_hint),
@@ -442,7 +457,8 @@ fun SettingsScreen(
 
             // ============ 诊断与关于 ============
             item { Section(stringResource(R.string.settings_section_diag_about)) {
-                SettingRow(stringResource(R.string.diag_title), onClick = onOpenDiagnostic, chevron = true)
+                if (cfg.injectionBackend != InjectionBackend.KERNEL_SU)
+                    SettingRow(stringResource(R.string.diag_title), onClick = onOpenDiagnostic, chevron = true)
                 SettingRow(
                     stringResource(R.string.settings_export_diag),
                     onClick = onExportDiag,

@@ -21,3 +21,13 @@ $classpath = $classpath -join [IO.Path]::PathSeparator
 if ($LASTEXITCODE -ne 0) { throw 'Hook diagnostics regression compilation failed.' }
 & java -cp $classpath HookDiagnosticsRegression
 if ($LASTEXITCODE -ne 0) { throw 'Hook diagnostics regressions failed.' }
+
+$ksuSources = @(
+    (Join-Path $PSScriptRoot 'KsuRegression.java'),
+    (Join-Path $repo 'app/src/main/java/io/mo/glassmic/root/KsuCommand.java'),
+    (Join-Path $repo 'app/src/main/java/io/mo/glassmic/root/KsuProcess.java')
+)
+& javac -encoding UTF-8 -cp $classpath -d $out @ksuSources
+if ($LASTEXITCODE -ne 0) { throw 'KSU regression compilation failed.' }
+& java -cp $classpath KsuRegression
+if ($LASTEXITCODE -ne 0) { throw 'KSU regressions failed.' }

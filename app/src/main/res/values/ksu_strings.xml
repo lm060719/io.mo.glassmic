@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backend_ksu">KernelSU 模块</string>
+    <string name="ksu_hint">控制已安装的 GlassMic KSU 模块（0.1.0.9 及兼容修订版）。需要 Root 和 Zygisk。目标应用请取消旧版 LSPosed 勾选并重新启动，避免两套录音后端冲突。</string>
+    <string name="ksu_library">模块音频库</string>
+    <string name="ksu_library_hint">这里显示 KSU 模块中的音频，与 WebUI 共用。支持导入 WAV、MP3、FLAC（最大 512 MiB）；APP 原音频库保持独立。点击文件立即播放。</string>
+    <string name="ksu_connect">连接模块</string>
+    <string name="ksu_disconnect">恢复真麦并断开</string>
+    <string name="ksu_refresh">刷新 / 重试</string>
+    <string name="ksu_hide_float">关闭悬浮窗</string>
+    <string name="ksu_show_float">打开悬浮窗</string>
+    <string name="ksu_import">导入到模块</string>
+    <string name="ksu_selected">当前选中</string>
+    <string name="ksu_empty">模块中暂无音频，请导入文件。</string>
+    <string name="ksu_scope_hint">这些选项直接保存到 KSU 模块，与 WebUI 同步。新增应用需完全退出后重新打开；取消选择立即放行真实麦克风。系统关键应用由模块保护。</string>
+    <string name="ksu_search">搜索应用名称或包名</string>
+    <string name="ksu_stopping">正在恢复真实麦克风…</string>
+    <string name="ksu_working">正在处理…</string>
+    <string name="ksu_connected">已连接 KSU 模块</string>
+    <string name="ksu_disconnected">未连接（模块可能仍独立运行）</string>
+    <string name="ksu_error">操作失败：%1$s。请确认模块已安装、已启用并授予本 APP Root 权限，再重试。</string>
+    <string name="ksu_pause">暂停</string>
+    <string name="ksu_play">播放</string>
+    <string name="ksu_real">真麦</string>
+    <string name="ksu_silence">静音</string>
+    <string name="ksu_progress">进度 %1$s / %2$s</string>
+    <string name="ksu_gain">伴奏增益 %1$s dB</string>
+    <string name="ksu_speed">播放速度 %1$s×</string>
+    <string name="ksu_switch_failed">未确认 KSU 已恢复真实麦克风，暂不切换后端。请先在模块 WebUI 恢复真麦，并重新连接后重试。</string>
+    <string name="ksu_independent">关闭页面或悬浮窗不会停止模块供音；点击“恢复真麦并断开”才结束本次控制。APP 意外退出后模块仍可能继续播放。</string>
+    <string name="ksu_mix">混入真实麦克风</string>
+    <string name="ksu_mix_hint">仅文件模式混音；暂停伴奏时保留人声，静音关闭全部声音。</string>
+    <string name="ksu_mix_upgrade">混音需要模块 0.1.0.10 或更新版本；更新后需重新启动目标应用。</string>
+    <string name="ksu_mic_level">人声音量 · %1$d%%</string>
+</resources>

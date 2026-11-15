@@ -32,6 +32,7 @@ class GlassTileService : TileService() {
     @Inject lateinit var runtime: RuntimeStateHolder
     @Inject lateinit var configStore: ConfigStore
     @Inject lateinit var bootGate: BootGateRepository
+    @Inject lateinit var ksu: io.mo.glassmic.root.KsuController
     @Inject lateinit var safeModeRepo: SafeModeRepository
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -84,6 +85,7 @@ class GlassTileService : TileService() {
     }
 
     private suspend fun disableMaster() {
+        if (configStore.current().injectionBackend == io.mo.glassmic.proto.InjectionBackend.KERNEL_SU && !ksu.release()) return
         configStore.update { it.setGlobalSwitch(false) }
         bootGate.clear()
         GlassForegroundService.stop(applicationContext)

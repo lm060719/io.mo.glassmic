@@ -1,5 +1,7 @@
 package io.mo.glassmic.ui.settings
 
+import io.mo.glassmic.R
+
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -59,6 +61,7 @@ class SettingsViewModel @Inject constructor(
     private val audioStatsRepo: AudioStatsRepository,
     private val visibilityCompatRepo: VisibilityCompatRepository,
     private val audioPolicy: AudioPolicyController,
+    private val ksu: io.mo.glassmic.root.KsuController,
     private val runtime: RuntimeStateHolder,
     private val bundler: io.mo.glassmic.data.diag.DiagnosticBundler,
     private val backgrounds: io.mo.glassmic.data.appearance.BackgroundStore,
@@ -83,13 +86,29 @@ class SettingsViewModel @Inject constructor(
     val policyStatus = audioPolicy.status
     val runtimeState = runtime.flow
 
+    val ksuState = ksu.state
+    private val _backendSwitching = MutableStateFlow(false)
+    val backendSwitching: StateFlow<Boolean> = _backendSwitching
+    private val _backendError = MutableStateFlow<String?>(null)
+    val backendError: StateFlow<String?> = _backendError
+
     fun setBackend(backend: InjectionBackend) = viewModelScope.launch {
-        if (runtime.value.enabled ||
+        if (_backendSwitching.value || ksu.state.value.busy || ksu.state.value.stopping || runtime.value.enabled ||
             policyStatus.value.phase in listOf(PolicyPhase.STARTING, PolicyPhase.ACTIVE, PolicyPhase.STOPPING)) return@launch
         // A killed process can leave global_switch persisted while the actual service is off.
         // Also cancel a queued service start before replacing the backend.
         io.mo.glassmic.service.GlassForegroundService.stop(context)
-        configStore.update { it.setGlobalSwitch(false).setInjectionBackend(backend) }
+        _backendSwitching.value = true
+        _backendError.value = null
+        try {
+            if (configStore.current().injectionBackend == InjectionBackend.KERNEL_SU && !ksu.release()) {
+                _backendError.value = io.mo.glassmic.data.config.AppLocale.string(context, R.string.ksu_switch_failed)
+                return@launch
+            }
+            io.mo.glassmic.service.FloatingWindowService.stop(context)
+            if (backend == InjectionBackend.KERNEL_SU) WaveformOverlayService.stop(context)
+            configStore.update { it.setGlobalSwitch(false).setInjectionBackend(backend) }
+        } finally { _backendSwitching.value = false }
     }
 
     fun retryAudioPolicy() = audioPolicy.retry()

@@ -15,4 +15,5 @@ public class RegressionSuiteTest {
     @Test public void folderIndex() { FolderIndexRegression.main(NO_ARGS); }
 
     @Test public void hookDiagnostics() { HookDiagnosticsRegression.main(NO_ARGS); }
+    @Test public void ksuControl() { KsuRegression.main(NO_ARGS); }
 }

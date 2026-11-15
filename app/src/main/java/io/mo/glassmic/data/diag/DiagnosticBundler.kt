@@ -55,6 +55,7 @@ class DiagnosticBundler @Inject constructor(
     private val visibilityCompatRepo: VisibilityCompatRepository,
     private val audioDao: AudioDao,
     private val publisher: Lazy<SharedPcmPublisher>,
+    private val ksu: io.mo.glassmic.root.KsuController,
     private val audioPolicy: io.mo.glassmic.root.AudioPolicyController,
     private val playbackSessionDiagnostics: PlaybackSessionDiagnostics
 ) {
@@ -111,6 +112,22 @@ class DiagnosticBundler @Inject constructor(
                 put("supported_abis", JSONArray(Build.SUPPORTED_ABIS))
                 put("visibility_compat", visibilityCompatRepo.isEnabled())
             })
+            if (cfg.injectionBackend == io.mo.glassmic.proto.InjectionBackend.KERNEL_SU) {
+                val state = ksu.state.value
+                put("ksu_controller", JSONObject().apply {
+                    put("connected", state.connected)
+                    put("busy", state.busy)
+                    put("stopping", state.stopping)
+                    put("has_error", state.error != null)
+                    state.snapshot?.let { snapshot ->
+                        put("module_version", snapshot.version)
+                        put("mode", snapshot.mode)
+                        put("paused", snapshot.paused)
+                        put("target_count", snapshot.targets.size)
+                        put("file_count", snapshot.files.size)
+                    }
+                })
+            }
             put("native_hook_support", JSONArray().apply {
                 put("NDK AAudio (libaaudio.so shadowhook)")
                 put("OpenSL ES (libOpenSLES.so buffer queue)")

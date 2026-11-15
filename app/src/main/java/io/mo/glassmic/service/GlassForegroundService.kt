@@ -45,6 +45,9 @@ class GlassForegroundService : LifecycleService() {
     @Inject lateinit var playback: PlaybackController
     @Inject lateinit var fairMemory: FairMemoryController
     @Inject lateinit var playbackSessionDiagnostics: PlaybackSessionDiagnostics
+    @Inject lateinit var ksu: io.mo.glassmic.root.KsuController
+    @Inject lateinit var configStore: io.mo.glassmic.data.config.ConfigStore
+    private var ksuSession = false
     @Inject lateinit var audioPolicy: io.mo.glassmic.root.AudioPolicyController
 
     override fun onCreate() {
@@ -59,12 +62,18 @@ class GlassForegroundService : LifecycleService() {
         // 服务空闲时不再阻止系统休眠。
         startForegroundCompat()
         runtime.setEnabled(true)
-        audioPolicy.start()
+
         // 常驻期间才低频采样内存——服务不跑时本进程没有音频缓冲，也就没什么可看的
         fairMemory.startSampling()
         // 会话诊断仅在服务运行时观察播放状态，避免 App 空闲时常驻协程。
         playbackSessionDiagnostics.start()
         lifecycleScope.launch {
+            ksuSession = configStore.current().injectionBackend == io.mo.glassmic.proto.InjectionBackend.KERNEL_SU
+            if (ksuSession) {
+                ksu.start()
+                return@launch
+            }
+            audioPolicy.start()
             if (playback.restorePersistedClip()) {
                 GlassLog.b("FgService") { "restored persisted audio source" }
             }
@@ -85,6 +94,7 @@ class GlassForegroundService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        if (ksuSession) ksu.stop()
         audioPolicy.stop()
         playbackSessionDiagnostics.stop()
         runtime.setEnabled(false)
