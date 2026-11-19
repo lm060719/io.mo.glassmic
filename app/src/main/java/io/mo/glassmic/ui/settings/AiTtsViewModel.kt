@@ -99,6 +99,7 @@ class AiTtsViewModel @Inject constructor(
     fun setFormat(v: String) = updateAi { it.format = v }
     fun setStylePrompt(v: String) = updateAi { it.stylePrompt = v }
     fun setMimoOptimizeTextPreview(v: Boolean) = updateAi { it.mimoOptimizeTextPreview = v }
+    fun setMimoStream(v: Boolean) = updateAi { it.mimoStream = v }
     fun setFishAutoTag(v: Boolean) = updateAi { it.fishAutoTag = v }
     fun setFishHumanize(v: Boolean) = updateAi { it.fishHumanize = v }
     fun setLlmEndpoint(v: String) = updateAi { it.llmEndpoint = v }

@@ -63,6 +63,7 @@ legacy-xposed-api = { module = "de.robv.android.xposed:api", version = "82" }
 
 # 单元测试（tests/ 下的回归检查经 :app:testDebugUnitTest 运行）
 junit = { module = "junit:junit", version = "4.13.2" }
+json = { module = "org.json:json", version = "20250517" }
 
 # 字节跳动 shadowhook：native inline hook 框架，用于劫持 AAudio
 shadowhook = { module = "com.bytedance.android:shadowhook", version = "1.0.10" }

@@ -16,8 +16,8 @@ android {
         applicationId = "io.mo.glassmic"
         minSdk = 29
         targetSdk = 35
-        versionCode = 36
-        versionName = "1.5.1.3"
+        versionCode = 37
+        versionName = "1.5.1.4"
         // 只打包中英文资源；resourceConfigurations 在 AGP 9 新 DSL 中已弃用，改用 localeFilters
         androidResources.localeFilters += listOf("zh-rCN", "en")
     }
@@ -134,6 +134,7 @@ dependencies {
     implementation(libs.coroutines.android)
 
     testImplementation(libs.junit)
+    testImplementation(libs.json)
 
     // libxposed service（用于向 LSPosed 动态申请应用作用域）
     implementation(libs.libxposed.service)

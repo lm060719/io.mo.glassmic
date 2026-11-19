@@ -127,6 +127,7 @@ message TtsAiConfig {
   string llm_model = 15;          // LLM 模型名（留空默认 deepseek-chat）
   bool fish_humanize = 16;        // 自动标签时是否同时把措辞改写得更口语化（关闭则一字不改）
   string fish_voices = 17;        // 音色预设：逗号分隔的「名称:声音ID」，供悬浮窗快速切换（默认空）
+  bool mimo_stream = 18;         // MiMo 专用：以 SSE 接收 PCM16 音频（默认关闭）
 }
 
 enum TtsProvider {

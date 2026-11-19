@@ -40,7 +40,7 @@ import javax.inject.Singleton
  * - [TtsProvider.GEMINI]：POST {base}/models/{model}:generateContent（AUDIO 模态），
  *                         返回 base64 PCM（默认 24kHz、16bit、单声道）。
  * - [TtsProvider.MIMO]  ：小米 MiMo，POST {base}/chat/completions（api-key 头 + audio 参数），
- *                         音频以 base64 藏在 message 里。
+ *                         音频以 base64 放在 message 或流式 delta 中。
  * - [TtsProvider.FISH]  ：Fish Audio，POST {base}/v1/tts（model 头 + reference_id 音色），返回 16bit PCM。
  *                         可选「自动标签」：先经 OpenAI 兼容 LLM 插入 Fish 情绪/音效标签（[FishAutoTag]）。
  *
@@ -207,7 +207,8 @@ class AiTtsSynthesizer @Inject constructor(
     private suspend fun mimo(ai: TtsAiConfig, req: TtsRequest, sink: PcmSink) {
         val base = ai.endpoint.ifBlank { "https://api.xiaomimimo.com/v1" }.trimEnd('/')
         val url = if (base.endsWith("/chat/completions")) base else "$base/chat/completions"
-        val format = ai.format.ifBlank { "wav" }
+        val stream = ai.mimoStream
+        val format = if (stream) "pcm16" else ai.format.ifBlank { "wav" }
         val model = ai.model.ifBlank { "mimo-v2.5-tts" }
 
         val audioParams = JSONObject().put("format", format)
@@ -235,14 +236,30 @@ class AiTtsSynthesizer @Inject constructor(
                     .put(JSONObject().put("role", "assistant").put("content", req.text))
             )
             .put("audio", audioParams)
-            .put("stream", false)
-            .toString()
+            .put("stream", stream)
+            .toString().toByteArray(Charsets.UTF_8)
         // MiMo 用 api-key 头（非 Authorization: Bearer）
         val headers = linkedMapOf(
             "Content-Type" to "application/json",
             "api-key" to ai.apiKey
         )
-        val bytes = httpPost(url, headers, body.toByteArray(Charsets.UTF_8))
+        if (stream) {
+            headers["Accept"] = "text/event-stream"
+            httpPost(url, headers, body) { input ->
+                val coroutineContext = currentCoroutineContext()
+                coroutineContext.ensureActive()
+                // MiMo 的流式输出固定为 24 kHz 单声道 PCM16LE。
+                sink.onFormat(24_000, 1)
+                readMimoPcmStream(input, MAX_RESPONSE_BYTES) { pcm ->
+                    coroutineContext.ensureActive()
+                    sink.onPcm(pcm)
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            sink.onDone()
+            return
+        }
+        val bytes = httpPost(url, headers, body)
 
         val root = JSONObject(String(bytes, Charsets.UTF_8))
         val message = root.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
@@ -451,7 +468,15 @@ class AiTtsSynthesizer @Inject constructor(
     }
 
     // ============ HTTP ============
-    private suspend fun httpPost(urlStr: String, headers: Map<String, String>, body: ByteArray): ByteArray {
+    private suspend fun httpPost(urlStr: String, headers: Map<String, String>, body: ByteArray): ByteArray =
+        httpPost(urlStr, headers, body) { readAll(it, MAX_RESPONSE_BYTES) }
+
+    private suspend fun <T> httpPost(
+        urlStr: String,
+        headers: Map<String, String>,
+        body: ByteArray,
+        readResponse: suspend (InputStream) -> T
+    ): T {
         val conn = (URL(urlStr).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = 15_000
@@ -459,7 +484,7 @@ class AiTtsSynthesizer @Inject constructor(
             doOutput = true
             headers.forEach { (k, v) -> setRequestProperty(k, v) }
         }
-        return exchange(conn) { it.outputStream.use { out -> out.write(body) } }
+        return exchange(conn, send = { it.outputStream.use { out -> out.write(body) } }, readResponse)
     }
 
     private suspend fun httpGet(urlStr: String, headers: Map<String, String>): ByteArray {
@@ -469,7 +494,7 @@ class AiTtsSynthesizer @Inject constructor(
             readTimeout = 30_000
             headers.forEach { (k, v) -> setRequestProperty(k, v) }
         }
-        return exchange(conn) {}
+        return exchange(conn, send = {}) { readAll(it, MAX_RESPONSE_BYTES) }
     }
 
     /**
@@ -477,7 +502,11 @@ class AiTtsSynthesizer @Inject constructor(
      * 断开连接，阻塞中的读写随即抛异常退出，而不是把整段音频下载完、白耗流量和额度。
      * 响应体有上限，异常大的响应不会把进程内存撑爆。
      */
-    private suspend fun exchange(conn: HttpURLConnection, send: (HttpURLConnection) -> Unit): ByteArray =
+    private suspend fun <T> exchange(
+        conn: HttpURLConnection,
+        send: (HttpURLConnection) -> Unit,
+        readResponse: suspend (InputStream) -> T
+    ): T =
         coroutineScope {
             val watchdog = launch {
                 try { awaitCancellation() } finally { conn.disconnect() }
@@ -493,7 +522,7 @@ class AiTtsSynthesizer @Inject constructor(
                 }
                 val declared = conn.contentLengthLong
                 if (declared > MAX_RESPONSE_BYTES) error("响应过大（${declared / 1024 / 1024} MB），已放弃")
-                conn.inputStream.use { readAll(it, MAX_RESPONSE_BYTES) }
+                conn.inputStream.use { readResponse(it) }
             } catch (e: java.io.IOException) {
                 // 被取消导致的断连按取消处理，不当成网络错误去重试或上报。
                 currentCoroutineContext().ensureActive()

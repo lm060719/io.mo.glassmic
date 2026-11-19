@@ -138,7 +138,9 @@ fun AiTtsSettingsScreen(
                             ModelPicker(models, onFetch = vm::fetchModels, onPick = vm::setModel)
                         }
                         TextFieldRow(stringResource(R.string.ai_tts_voice), ai.voice, stringResource(R.string.ai_tts_default_placeholder), vm::setVoice)
-                        TextFieldRow(stringResource(R.string.ai_tts_format), ai.format, stringResource(R.string.ai_tts_format_placeholder), vm::setFormat)
+                        if (provider != TtsProvider.MIMO || !ai.mimoStream) {
+                            TextFieldRow(stringResource(R.string.ai_tts_format), ai.format, stringResource(R.string.ai_tts_format_placeholder), vm::setFormat)
+                        }
                     }
                 }
 
@@ -151,6 +153,12 @@ fun AiTtsSettingsScreen(
                                 modifier = Modifier.padding(vertical = 10.dp)
                             )
                             TextFieldRow(stringResource(R.string.ai_tts_style_prompt_hint), ai.stylePrompt, null, vm::setStylePrompt, mono = false)
+                            SwitchRow(
+                                label = stringResource(R.string.ai_tts_mimo_stream),
+                                hint = stringResource(R.string.ai_tts_mimo_stream_hint),
+                                checked = ai.mimoStream,
+                                onChange = vm::setMimoStream
+                            )
                             val optimizePreview = if (ai.hasMimoOptimizeTextPreview()) ai.mimoOptimizeTextPreview else true
                             SwitchRow(
                                 label = stringResource(R.string.ai_tts_mimo_optimize_text_preview),
